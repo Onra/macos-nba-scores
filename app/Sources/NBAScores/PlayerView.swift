@@ -87,15 +87,16 @@ struct PlayerView: View {
                 if !card.injury.isEmpty {
                     GridRow {
                         Caption("Injury")
-                        Text(card.injury).font(.system(size: 12.5)).foregroundStyle(.red)
-                    }
-                    if let back = card.injuryReturn {
-                        GridRow {
-                            Caption("Return")
-                            Text(back.hasPrefix("Out") ? back : "\(back) (estimated)")
-                                .font(.system(size: 12.5))
-                                .monospacedDigit()
+                        // ESPN's estimate of his return, beside the injury.
+                        HStack(spacing: 5) {
+                            Text(card.injury).foregroundStyle(.red)
+                            if let back = card.injuryReturn {
+                                Text(back.hasPrefix("Out") ? "(\(back.lowercased()))" : "(est. \(back))")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .font(.system(size: 12.5))
                     }
                 }
             }
