@@ -89,6 +89,14 @@ struct PlayerView: View {
                         Caption("Injury")
                         Text(card.injury).font(.system(size: 12.5)).foregroundStyle(.red)
                     }
+                    if let back = card.injuryReturn {
+                        GridRow {
+                            Caption("Return")
+                            Text(back.hasPrefix("Out") ? back : "\(back) (estimated)")
+                                .font(.system(size: 12.5))
+                                .monospacedDigit()
+                        }
+                    }
                 }
             }
             Spacer(minLength: 0)

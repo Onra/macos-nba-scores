@@ -30,6 +30,7 @@ It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-
 **Box score and player card**
 - The score by quarter, then every player: minutes, points, rebounds, assists, steals, blocks, turnovers, shooting and plus-minus. Starters and bench apart, the top scorer in bold, the reason a player did not play
 - A click on a player opens his card: photo, age, size (in feet and pounds, and in metres and kilos), birthplace, draft, college, injury, his averages this season, in the playoffs and over his career (a green or red arrow by each of this season's averages says whether it beats his career's), his titles (NBA championships and NBA Cups won with his team) and awards, his career season by season, and his salary season by season, including the seasons to come with player and team options
+- An injured player's card says when he is expected back, and so does his line on his team's roster (`Out · 22 Nov`). The date is ESPN's estimate
 - A retired player's card says **Retired**, and a free agent's says **Free agent**, in place of the team
 - A title on a card opens the bracket of that season: the playoffs for an NBA title (from 2007-08), the NBA Cup for a Cup. Back returns to the card
 - An award on a card opens its voting for that season: rank, team, first-place votes, points and share of the vote, with the player marked. For All-NBA, All-Defensive and All-Rookie, the players are listed by team (1st, 2nd, 3rd), then the other players who got votes. The chevrons step through the seasons, back to the first voting Basketball-Reference has (1955-56 for the MVP). Finals, All-Star and Cup MVPs have no voting, so they do not open
@@ -99,6 +100,7 @@ The app is pure Swift: SwiftUI for the panel (`app/Sources/NBAScores`), and a sm
 | Scores, box scores, standings, team pages, player bio and stats, search | ESPN's public API |
 | Salary of each season under contract | ESPN |
 | Salaries of the seasons to come, with options | Basketball-Reference, one page for every player, fetched at most once a day |
+| Injuries and estimated return dates | ESPN |
 | NBA champions, for the titles on a card | Basketball-Reference, one page, kept for a week |
 | Award voting | Basketball-Reference, one page per season, kept for good |
 | NBA Cup results and tables | ESPN's scoreboard of each day of the Cup, with the Cup tiebreakers applied |

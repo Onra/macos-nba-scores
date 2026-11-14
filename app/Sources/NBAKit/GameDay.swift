@@ -18,6 +18,11 @@ public enum GameDay {
         return labelFormatter.string(from: date)
     }
 
+    /// "20261114" -> "14 Nov"
+    public static func shortLabel(_ key: String) -> String {
+        label(key).split(separator: " ").dropFirst().joined(separator: " ")
+    }
+
     /// Noon UTC of that day: safe to format in UTC whatever the user's time zone.
     static func date(_ key: String) -> Date? {
         guard isKey(key) else { return nil }

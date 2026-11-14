@@ -76,6 +76,8 @@ public struct PlayerCard: Codable, Sendable, Identifiable {
     public var college = ""
     public var experience = ""
     public var injury = ""
+    /// "Sun 22 Nov" or "Out for the season": ESPN's estimate of his return, when it has one.
+    public var injuryReturn: String?
     /// "2026-27 regular season"
     public var statsTitle = ""
     /// This season, the playoffs, the career.
@@ -113,7 +115,9 @@ public struct PlayerCard: Codable, Sendable, Identifiable {
         college = a["college"]["name"].text
         experience = a["displayExperience"].text
         if let first = a["injuries"].array.first {
-            injury = [first["status"].text, first["details"]["type"].text].filter { !$0.isEmpty }.joined(separator: " · ")
+            let details = Injury(first)
+            injury = details.summary
+            injuryReturn = details.returnText
         }
         statsTitle = a["statsSummary"]["displayName"].text.replacingOccurrences(of: " stats", with: "")
 

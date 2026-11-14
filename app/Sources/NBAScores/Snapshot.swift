@@ -25,6 +25,11 @@ enum Snapshot {
                     await shoot(model, "player", to: directory)
                     model.back()
                 }
+                // An injured player, for the estimated return.
+                model.openPlayer("4396993")
+                await model.fetchPlayer()
+                await shoot(model, "player-injured", to: directory)
+                model.back()
                 // An MVP's card, then the voting of his first MVP and of his first All-NBA team.
                 model.openPlayer("4278073")
                 await model.fetchPlayer()

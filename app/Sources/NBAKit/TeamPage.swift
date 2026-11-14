@@ -6,6 +6,7 @@ public struct RosterPlayer: Codable, Hashable, Sendable, Identifiable {
     public var jersey = ""
     public var pos = ""
     public var age: Int?
+    /// "Out", or "Out · 22 Nov" once the league's injury list says when he is expected back.
     public var injury = ""
 }
 
@@ -104,8 +105,9 @@ public struct TeamPage: Codable, Sendable {
     public var roster: [RosterPlayer] = []
     public var games: [TeamGame] = []
 
-    /// `schedules`: by ESPN season type.
-    public init(id: String, info: JSON, roster rosterJSON: JSON?, schedules: [Int: JSON], current: Bool) {
+    /// `schedules`: by ESPN season type. `injuries`: the league's injury list, by athlete id.
+    public init(id: String, info: JSON, roster rosterJSON: JSON?, schedules: [Int: JSON], current: Bool,
+                injuries: [String: Injury] = [:]) {
         let t = info["team"]
         self.id = id
         abbr = t["abbreviation"].text
@@ -135,7 +137,7 @@ public struct TeamPage: Codable, Sendable {
             roster = rosterJSON["athletes"].array.map { a in
                 RosterPlayer(id: a["id"].text, name: a["displayName"].text, jersey: a["jersey"].text,
                              pos: a["position"]["abbreviation"].text, age: a["age"].int,
-                             injury: a["injuries"][0]["status"].text)
+                             injury: injuries[a["id"].text]?.short ?? a["injuries"][0]["status"].text)
             }
             .sorted { (Int($0.jersey) ?? 999, $0.name) < (Int($1.jersey) ?? 999, $1.name) }
             let first = rosterJSON["coach"][0]

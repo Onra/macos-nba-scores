@@ -337,6 +337,55 @@ func sga() throws -> PlayerCard {
     }
 }
 
+@Suite struct InjuryTests {
+    @Test func leagueList() throws {
+        let injuries = Injuries.parse(try fixture("injuries"))
+        let holmgren = try #require(injuries["4433255"])
+        #expect(holmgren.status == "Out")
+        #expect(holmgren.type == "Knee")
+        #expect(holmgren.returnDay == "20270102")
+        #expect(holmgren.summary == "Out · Knee")
+        #expect(holmgren.returnText == "Sat 2 Jan")
+        #expect(holmgren.short == "Out · 2 Jan")
+        #expect(!holmgren.seasonEnding)
+        let flemings = try #require(injuries["5149077"])
+        #expect(flemings.short == "Day-To-Day · 15 Nov")
+    }
+
+    @Test func seasonEndingAndUnknown() throws {
+        let ended = Injury(try JSON(data: Data(#"{"status": "Out", "details": {"type": "Knee", "returnDate": "2027-07-01", "fantasyStatus": {"abbreviation": "OFS"}}}"#.utf8)))
+        #expect(ended.returnText == "Out for the season")
+        #expect(ended.short == "Out · season")
+        let unknown = Injury(try JSON(data: Data(#"{"status": "Out"}"#.utf8)))
+        #expect(unknown.returnText == nil)
+        #expect(unknown.short == "Out")
+        #expect(unknown.summary == "Out")
+    }
+
+    @Test func onAPlayerCard() throws {
+        let bio = try JSON(data: Data(#"""
+        {"athlete": {"displayName": "Tyrese Haliburton", "injuries": [{"status": "Out", "date": "2026-11-11T22:29:00.000+00:00",
+          "details": {"type": "Hamstring", "returnDate": "2026-11-22T00:00:00.000+00:00", "fantasyStatus": {"abbreviation": "OUT"}}}]}}
+        """#.utf8))
+        let card = PlayerCard(id: "1", bio: bio, overview: nil, stats: nil, teams: [:])
+        #expect(card.injury == "Out · Hamstring")
+        #expect(card.injuryReturn == "Sun 22 Nov")
+        #expect(try sga().injuryReturn == nil)
+    }
+
+    @Test func onARoster() throws {
+        let page = TeamPage(id: "25", info: try fixture("team-info"), roster: try fixture("team-roster"),
+                            schedules: [2: try fixture("team-schedule2")], current: true,
+                            injuries: Injuries.parse(try fixture("injuries")))
+        #expect(page.roster.first { $0.name == "Chet Holmgren" }?.injury == "Out · 2 Jan")
+        #expect(page.roster.first { $0.name == "Shai Gilgeous-Alexander" }?.injury == "")
+        // Without the league's list, the roster still says who is hurt.
+        let plain = TeamPage(id: "25", info: try fixture("team-info"), roster: try fixture("team-roster"),
+                             schedules: [2: try fixture("team-schedule2")], current: true)
+        #expect(plain.roster.first { $0.name == "Chet Holmgren" }?.injury == "Out")
+    }
+}
+
 @Suite struct SearchTests {
     @Test func parse() throws {
         let found = Search.parse(try fixture("search-jordan"))

@@ -47,8 +47,10 @@ public struct Library: Sendable {
         async let regular = web.optionalJSON(URL(string: "\(base)/schedule\(query)seasontype=2")!)
         async let playIn = web.optionalJSON(URL(string: "\(base)/schedule\(query)seasontype=5")!)
         async let playoffs = web.optionalJSON(URL(string: "\(base)/schedule\(query)seasontype=3")!)
+        // When the injured are expected back: the roster only says who is hurt.
+        async let injured = season == 0 ? web.optionalJSON(URL(string: "\(Library.site)/injuries")!) : nil
         guard let info = await info, let regular = await regular else {
-            _ = await (roster, playIn, playoffs)
+            _ = await (roster, playIn, playoffs, injured)
             return cached?.value
         }
         var schedules = [2: regular]
@@ -57,7 +59,8 @@ public struct Library: Sendable {
         // The current season's end year, asked for by number, is still the current one.
         let latest = regular["season"]["year"].int ?? 0
         let current = season == 0 || (latest > 0 && season >= latest)
-        let page = TeamPage(id: id, info: info, roster: await roster, schedules: schedules, current: current)
+        let page = TeamPage(id: id, info: info, roster: await roster, schedules: schedules, current: current,
+                            injuries: (await injured).map(Injuries.parse) ?? [:])
         cache.save(page, key)
         return page
     }
