@@ -11,6 +11,7 @@ struct BoxScoreView: View {
         if let box = model.boxes[id] {
             VStack(spacing: 18) {
                 LineScore(box: box).padding(.top, 6)
+                if box.winProbability.count > 1 { WinProbabilityView(box: box) }
                 ForEach(box.teams, id: \.side.team.id) { team in
                     TeamBoxView(model: model, team: team)
                 }
@@ -134,6 +135,110 @@ struct TeamBoxView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Each team's chance to win, play after play: the away team's half above the middle line, the home
+/// team's below. Dotted lines mark the periods. Hovering shows the clock, the score and the chances
+/// at that moment.
+struct WinProbabilityView: View {
+    let box: BoxScore
+    @State var hovered: Int?
+
+    var body: some View {
+        let points = box.winProbability
+        let away = box.teams.first?.side.team.abbr ?? ""
+        let host = box.teams.count == 2 ? box.teams[1].side.team.abbr : ""
+        VStack(spacing: 4) {
+            HStack(spacing: 10) {
+                Caption("Win probability")
+                Spacer()
+                if let hovered, points.indices.contains(hovered) {
+                    let point = points[hovered]
+                    Text(point.when).foregroundStyle(.secondary)
+                    Text("\(away) \(point.awayScore)–\(point.homeScore) \(host)")
+                    chance(point.home, away: away, host: host)
+                } else if box.state == .live, let last = points.last {
+                    chance(last.home, away: away, host: host)
+                }
+            }
+            .font(.system(size: 11))
+            .monospacedDigit()
+            .frame(height: 14)
+            HStack(spacing: 8) {
+                VStack {
+                    Text(away)
+                    Spacer()
+                    Text(host)
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, alignment: .leading)
+                GeometryReader { proxy in
+                    Canvas { context, size in draw(in: &context, size: size) }
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                let count = max(points.count - 1, 1)
+                                let index = Int((location.x / proxy.size.width * CGFloat(count)).rounded())
+                                hovered = min(max(index, 0), points.count - 1)
+                            case .ended:
+                                hovered = nil
+                            }
+                        }
+                }
+                .frame(height: 64)
+                .background(.primary.opacity(0.03), in: .rect(cornerRadius: 6))
+            }
+        }
+        .padding(.horizontal, Layout.rowInset)
+    }
+
+    /// The leading team and its chance, `DEN 64%`.
+    private func chance(_ home: Double, away: String, host: String) -> some View {
+        Text("\(home >= 0.5 ? host : away) \(Int((max(home, 1 - home) * 100).rounded()))%")
+            .fontWeight(.semibold)
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize) {
+        let points = box.winProbability
+        let count = max(points.count - 1, 1)
+        func x(_ index: Int) -> CGFloat { size.width * CGFloat(index) / CGFloat(count) }
+        // The home team's chance grows downwards, towards its name.
+        func y(_ value: Double) -> CGFloat { size.height * CGFloat(value) }
+        func vertical(at x: CGFloat) -> Path {
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: 0))
+            line.addLine(to: CGPoint(x: x, y: size.height))
+            return line
+        }
+        for start in box.periodStarts {
+            context.stroke(vertical(at: x(start)), with: .color(.primary.opacity(0.12)), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+        }
+        var middle = Path()
+        middle.move(to: CGPoint(x: 0, y: size.height / 2))
+        middle.addLine(to: CGPoint(x: size.width, y: size.height / 2))
+        context.stroke(middle, with: .color(.primary.opacity(0.2)), lineWidth: 1)
+
+        var curve = Path()
+        for (index, point) in points.enumerated() {
+            let at = CGPoint(x: x(index), y: y(point.home))
+            if index == 0 { curve.move(to: at) } else { curve.addLine(to: at) }
+        }
+        var area = curve
+        area.addLine(to: CGPoint(x: size.width, y: size.height / 2))
+        area.addLine(to: CGPoint(x: 0, y: size.height / 2))
+        area.closeSubpath()
+        context.fill(area, with: .color(.accentColor.opacity(0.15)))
+        context.stroke(curve, with: .color(.accentColor), style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+
+        if let hovered, points.indices.contains(hovered) {
+            let at = CGPoint(x: x(hovered), y: y(points[hovered].home))
+            context.stroke(vertical(at: at.x), with: .color(.primary.opacity(0.35)), lineWidth: 1)
+            let dot = Path(ellipseIn: CGRect(x: at.x - 3.5, y: at.y - 3.5, width: 7, height: 7))
+            context.fill(dot, with: .color(.accentColor))
+            context.stroke(dot, with: .color(.white), lineWidth: 1.5)
         }
     }
 }

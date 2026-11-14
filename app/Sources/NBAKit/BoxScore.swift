@@ -28,6 +28,22 @@ public struct TeamBox: Hashable, Sendable {
     public var hasPlayers: Bool { !starters.isEmpty || !bench.isEmpty }
 }
 
+/// The home team's chance to win after a play, and where the game stood then.
+public struct WinPoint: Sendable, Equatable {
+    /// 0 to 1.
+    public var home: Double
+    public var period: Int
+    public var clock: String
+    public var awayScore: Int
+    public var homeScore: Int
+
+    /// `Q3 7:42`, `OT 0:12`, `2OT 4:00`.
+    public var when: String {
+        let name = period <= 4 ? "Q\(period)" : period == 5 ? "OT" : "\(period - 4)OT"
+        return "\(name) \(clock)"
+    }
+}
+
 public struct BoxScore: Identifiable, Sendable {
     /// The player columns, as ESPN labels them.
     public static let columns = ["MIN", "PTS", "REB", "AST", "STL", "BLK", "TO", "FG", "3PT", "FT", "+/-"]
@@ -40,6 +56,10 @@ public struct BoxScore: Identifiable, Sendable {
     public var periods: [String] = []
     /// Away first.
     public var teams: [TeamBox] = []
+    /// The home team's chance to win after each play.
+    public var winProbability: [WinPoint] = []
+    /// Where each period after the first starts in `winProbability`.
+    public var periodStarts: [Int] = []
 
     public init(_ json: JSON) {
         let comp = json["header"]["competitions"][0]
@@ -104,6 +124,29 @@ public struct BoxScore: Identifiable, Sendable {
             team.summary = bits.joined(separator: " · ")
             return team
         }
+        (winProbability, periodStarts) = BoxScore.winProbability(json)
+    }
+
+    /// ESPN's win probability, play after play; the plays say where each period starts.
+    static func winProbability(_ json: JSON) -> (points: [WinPoint], periodStarts: [Int]) {
+        var plays: [String: JSON] = [:]
+        for play in json["plays"].array { plays[play["id"].text] = play }
+        var points: [WinPoint] = [], starts: [Int] = []
+        var last = WinPoint(home: 0.5, period: 1, clock: "12:00", awayScore: 0, homeScore: 0)
+        for (index, item) in json["winprobability"].array.enumerated() {
+            var point = last
+            point.home = item["homeWinPercentage"].double ?? last.home
+            if let play = plays[item["playId"].text] {
+                point.period = play["period"]["number"].int ?? last.period
+                point.clock = play["clock"]["displayValue"].text
+                point.awayScore = play["awayScore"].int ?? last.awayScore
+                point.homeScore = play["homeScore"].int ?? last.homeScore
+            }
+            if point.period > last.period { starts.append(index) }
+            points.append(point)
+            last = point
+        }
+        return (points, starts)
     }
 
     /// NBA.com's recap video, once the game is over.

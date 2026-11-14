@@ -29,6 +29,7 @@ It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-
 
 **Box score and player card**
 - The score by quarter, then every player: minutes, points, rebounds, assists, steals, blocks, turnovers, shooting and plus-minus. Starters and bench apart, the top scorer in bold, the reason a player did not play
+- The win probability through the game as a chart, with the quarters marked, when ESPN has it. Hovering it shows the clock, the score and each team's chance at that moment (`Q3 3:11  NY 71–83 IND  IND 85%`)
 - A click on a player opens his card: photo, age, size (in feet and pounds, and in metres and kilos), birthplace, draft, college, injury, his averages this season, in the playoffs and over his career (a green or red arrow by each of this season's averages says whether it beats his career's), his titles (NBA championships and NBA Cups won with his team) and awards, his career season by season, and his salary season by season, including the seasons to come with player and team options
 - An injured player's card says when he is expected back, beside the injury (`Out · Hamstring (est. Sun 22 Nov)`), and so does his line on his team's roster (`Out · 22 Nov`). The date is ESPN's estimate
 - A retired player's card says **Retired**, and a free agent's says **Free agent**, in place of the team

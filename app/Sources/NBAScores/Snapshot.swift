@@ -24,6 +24,14 @@ enum Snapshot {
                 model.openBox(game)
                 await model.fetchBox()
                 await shoot(model, "box", to: directory)
+                // The win probability with the pointer two thirds of the way in.
+                if let box = model.boxes[game.id], box.winProbability.count > 1 {
+                    let chart = WinProbabilityView(box: box, hovered: box.winProbability.count * 2 / 3)
+                        .frame(width: Layout.detail).padding(.vertical, 12)
+                    for dark in [false, true] {
+                        await capture(chart, dark: dark, to: "\(directory)/winprobability-\(dark ? "dark" : "light").png")
+                    }
+                }
                 if let player = model.boxes[game.id]?.teams.first?.starters.first {
                     model.openPlayer(player.athlete)
                     await model.fetchPlayer()

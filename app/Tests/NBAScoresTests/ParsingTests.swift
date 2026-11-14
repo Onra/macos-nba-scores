@@ -181,3 +181,35 @@ func fixture(_ name: String) throws -> JSON {
         #expect(east[0].team.logo != nil)
     }
 }
+
+@Suite struct WinProbabilityTests {
+    @Test func curveAndPeriods() throws {
+        let (points, starts) = BoxScore.winProbability(try fixture("summary-winprobability"))
+        #expect(points.count == 517)
+        #expect(abs(points[0].home - 0.235) < 1e-6)
+        // The home team won, 106-104.
+        #expect(points.last?.home == 1)
+        #expect(points.last?.awayScore == 104)
+        #expect(points.last?.homeScore == 106)
+        #expect(points.last?.when == "Q4 0.0")
+        #expect(points[5].when == "Q1 11:07")
+        #expect(points[starts[1]].period == 3)
+        // Three quarters start after the first, in order.
+        #expect(starts.count == 3)
+        #expect(starts == starts.sorted())
+        #expect(starts.allSatisfy { $0 > 0 && $0 < 517 })
+    }
+
+    @Test func periodNames() {
+        func when(_ period: Int) -> String { WinPoint(home: 0.5, period: period, clock: "4:00", awayScore: 0, homeScore: 0).when }
+        #expect(when(1) == "Q1 4:00")
+        #expect(when(5) == "OT 4:00")
+        #expect(when(6) == "2OT 4:00")
+    }
+
+    @Test func gameWithoutIt() throws {
+        let box = BoxScore(try fixture("summary-401909299"))
+        #expect(box.winProbability.isEmpty)
+        #expect(box.periodStarts.isEmpty)
+    }
+}
