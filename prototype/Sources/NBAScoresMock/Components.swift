@@ -185,22 +185,32 @@ struct Fitted<Content: View>: View {
     }
 }
 
-/// Keeps the panel on screen when it grows wider than the space right of the menu bar icon.
+/// Keeps the panel centred under the menu bar icon, as far as the screen allows, whatever its width.
+/// Left alone, the system keeps the panel's right edge where it was, so a wider view grows to the left.
 struct WindowClamp: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { ClampView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
 
     final class ClampView: NSView {
-        override func setFrameSize(_ newSize: NSSize) {
-            super.setFrameSize(newSize)
-            DispatchQueue.main.async { [weak self] in self?.clamp() }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self)
+            guard let window else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(place), name: name, object: window)
+            }
+            place()
         }
 
-        private func clamp() {
-            guard let window, let screen = window.screen else { return }
-            let limit = screen.visibleFrame.maxX - 8
-            if window.frame.maxX > limit {
-                window.setFrameOrigin(NSPoint(x: limit - window.frame.width, y: window.frame.origin.y))
+        @objc private func place() {
+            guard let window, let screen = window.screen ?? NSScreen.main,
+                  let icon = NSApp.windows.first(where: { $0.className.contains("NSStatusBarWindow") })?.frame
+            else { return }
+            let visible = screen.visibleFrame
+            let width = window.frame.width
+            let x = min(max(icon.midX - width / 2, visible.minX + 8), visible.maxX - 8 - width)
+            if abs(x - window.frame.origin.x) > 0.5 {
+                window.setFrameOrigin(NSPoint(x: x, y: window.frame.origin.y))
             }
         }
     }
