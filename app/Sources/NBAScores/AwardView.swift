@@ -41,8 +41,10 @@ struct AwardView: View {
     }
 
     private func row(_ vote: Vote, grouped: Bool) -> some View {
-        let me = !key.me.isEmpty && vote.athlete == key.me
-        return Row(height: 26, selected: me, action: vote.athlete.isEmpty ? nil : { model.openPlayer(vote.athlete) }) {
+        let me = !key.me.isEmpty && (vote.athlete == key.me || vote.coach == key.me)
+        let open: (() -> Void)? = !vote.coach.isEmpty ? { model.openCoach(vote.coach) }
+            : !vote.athlete.isEmpty ? { model.openPlayer(vote.athlete) } : nil
+        return Row(height: 26, selected: me, action: open) {
             HStack(spacing: 8) {
                 Text(grouped ? vote.pos : vote.rank)
                     .font(.system(size: 11))

@@ -38,10 +38,28 @@ struct TeamView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(page.record.isEmpty ? page.seasonLabel : page.record).font(.system(size: 17, weight: .semibold)).monospacedDigit()
                 Text(details(page)).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
+                coaches(page)
             }
             Spacer()
         }
         .padding(.horizontal, Layout.rowInset)
+    }
+
+    /// The season's head coaches, which open their page; with their record when there were several.
+    @ViewBuilder private func coaches(_ page: TeamPage) -> some View {
+        if !page.coaches.isEmpty {
+            HStack(spacing: 4) {
+                Text(page.coaches.count > 1 ? "Coaches" : "Coach").foregroundStyle(.secondary)
+                ForEach(Array(page.coaches.enumerated()), id: \.element.id) { index, coach in
+                    CoachLink(model: model, coach: coach, showRecord: page.coaches.count > 1)
+                    if index < page.coaches.count - 1 { Text("·").foregroundStyle(.tertiary) }
+                }
+            }
+            .font(.system(size: 11.5))
+            .lineLimit(1)
+        } else if !page.coach.isEmpty {
+            Text("Coach \(page.coach)").font(.system(size: 11.5)).foregroundStyle(.secondary)
+        }
     }
 
     /// Under the record: "home 33-8 · away 28-13 · 1st in Pacific Division"
@@ -58,7 +76,7 @@ struct TeamView: View {
     private func roster(_ page: TeamPage) -> some View {
         let half = (page.roster.count + 1) / 2
         return VStack(spacing: 2) {
-            SectionHeader(title: page.coach.isEmpty ? "Roster" : "Roster · coach \(page.coach)")
+            SectionHeader(title: "Roster")
             HStack(alignment: .top, spacing: 12) {
                 ForEach([Array(page.roster.prefix(half)), Array(page.roster.dropFirst(half))], id: \.self) { column in
                     VStack(spacing: 1) {

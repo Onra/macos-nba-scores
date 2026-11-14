@@ -51,6 +51,7 @@ struct PanelView: View {
         case .series(let series): SeriesView(model: model, series: series)
         case .bracket(let key): StandingsView(model: model, key: key)
         case .award(let key): AwardView(model: model, key: key)
+        case .coach(let code): CoachView(model: model, code: code)
         case nil:
             switch model.tab {
             case .scores: ScoresView(model: model)
@@ -63,7 +64,7 @@ struct PanelView: View {
     private var hasContent: Bool {
         switch model.stack.last {
         case .box(let id): model.boxes[id] != nil
-        case .player, .team, .search, .series, .bracket, .award: false
+        case .player, .team, .search, .series, .bracket, .award, .coach: false
         case nil: model.tab == .scores ? model.viewLoaded : false
         }
     }
@@ -84,7 +85,7 @@ struct PanelView: View {
             case .box: model.stepBox(delta)
             case .team: model.stepTeamSeason(delta)
             case .award: model.stepAwardSeason(delta)
-            case .player, .search, .series, .bracket: return false
+            case .player, .search, .series, .bracket, .coach: return false
             case nil: model.tab == .scores ? model.stepDay(delta) : model.stepSeason(delta)
             }
         case .upArrow, .downArrow:
@@ -132,6 +133,8 @@ struct Header: View {
             case .search: search
             case .series(let series): self.series(series)
             case .bracket(let key): detail { TitleBlock(title: Season.label(key.season), subtitle: tableSubtitle(key)) }
+            case .coach(let code):
+                detail { TitleBlock(title: model.coaches[code]?.name ?? "Coach", subtitle: model.coaches[code]?.role ?? " ") }
             case .award(let key):
                 detail {
                     StepTitle(

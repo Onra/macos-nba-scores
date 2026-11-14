@@ -48,6 +48,8 @@ enum Route: Hashable {
     /// The Cup or the playoffs of a season, opened from a title on a player card.
     case bracket(TableKey)
     case award(AwardKey)
+    /// A coach, by Basketball-Reference's code.
+    case coach(String)
 
     var title: String {
         switch self {
@@ -58,6 +60,7 @@ enum Route: Hashable {
         case .series: "Series"
         case .bracket(let key): key.table.rawValue
         case .award: "Voting"
+        case .coach: "Coach"
         }
     }
 }
@@ -91,6 +94,7 @@ final class AppModel {
     private(set) var teamPages: [Route: TeamPage] = [:]
     private(set) var failed: Set<Route> = []
     private(set) var awards: [AwardKey: AwardPage] = [:]
+    private(set) var coaches: [String: CoachPage] = [:]
     private(set) var failedAwards: Set<AwardKey> = []
 
     // Search
@@ -241,6 +245,7 @@ final class AppModel {
         // A refresh the user asked for goes past the cache.
         if case .team = stack.last { await fetchTeam(force: force) }
         if case .player = stack.last, force { await fetchPlayer(force: true) }
+        if case .coach = stack.last, force { await fetchCoach(force: true) }
         if case .award = stack.last { await fetchAward() }
     }
 
@@ -389,6 +394,33 @@ final class AppModel {
         guard !id.isEmpty else { return }
         stack.append(.box(id))
         Task { await fetchBox() }
+    }
+
+    // MARK: Coaches
+
+    func openCoach(_ code: String) {
+        guard !code.isEmpty, stack.last != .coach(code) else { return }
+        stack.append(.coach(code))
+        Task { await fetchCoach() }
+    }
+
+    func fetchCoach(force: Bool = false) async {
+        guard case .coach(let code) = stack.last, let route = stack.last else { return }
+        if let page = await library.coach(code, season: seasonYear, force: force) {
+            coaches[code] = page
+            failed.remove(route)
+        } else if coaches[code] == nil {
+            failed.insert(route)
+        }
+    }
+
+    /// A player's card, found on ESPN by his name: a coach's playing career.
+    func openPlayer(named name: String) {
+        Task {
+            let found = await library.search(name).filter { $0.kind == .player }
+            let id = Awards.match(name, among: found)
+            if !id.isEmpty { openPlayer(id) }
+        }
     }
 
     // MARK: Award voting

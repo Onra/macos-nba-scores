@@ -2,7 +2,7 @@ import Foundation
 
 /// The awards that are voted on. Finals, All-Star and Cup MVPs have no voting to show.
 public enum AwardKind: String, Codable, CaseIterable, Sendable {
-    case mvp, roy, dpoy, smoy, mip, clutch
+    case mvp, roy, dpoy, smoy, mip, clutch, coy
     case allNBA = "all-nba"
     case allDefensive = "all-defensive"
     case allRookie = "all-rookie"
@@ -31,6 +31,7 @@ public enum AwardKind: String, Codable, CaseIterable, Sendable {
         case .smoy: "Sixth Man of the Year"
         case .mip: "Most Improved Player"
         case .clutch: "Clutch Player of the Year"
+        case .coy: "Coach of the Year"
         case .allNBA: "All-NBA"
         case .allDefensive: "All-Defensive"
         case .allRookie: "All-Rookie"
@@ -60,6 +61,7 @@ public enum AwardKind: String, Codable, CaseIterable, Sendable {
         case .smoy: 1984
         case .mip: 1986
         case .clutch: 2023
+        case .coy: 1963
         case .allNBA: 1966
         case .allDefensive: 1969
         case .allRookie: 1963
@@ -81,6 +83,8 @@ public struct Vote: Codable, Hashable, Sendable, Identifiable {
     public var share = ""
     /// ESPN's athlete id, when its search finds the player.
     public var athlete = ""
+    /// Basketball-Reference's code of a coach, in the Coach of the Year voting.
+    public var coach = ""
     /// ESPN's team id, for the seasons that have a team page.
     public var teamID = ""
 
@@ -125,21 +129,19 @@ public enum Awards {
             let body = rest.range(of: "</table>").map { rest[..<$0.lowerBound] } ?? rest
             var rows: [Vote] = [], seen: Set<String> = []
             for row in Text.rows(String(body)) {
-                func cell(_ stat: String) -> String {
-                    guard let range = row.range(of: "data-stat=\"\(stat)\""),
-                          let open = row[range.upperBound...].firstIndex(of: ">") else { return "" }
-                    let rest = row[row.index(after: open)...]
-                    let end = rest.range(of: "</t")?.lowerBound ?? rest.endIndex
-                    return Text.unescape(String(rest[..<end]).replacing(/<[^>]+>/, with: "")).trimmingCharacters(in: .whitespaces)
-                }
-                // A Hall of Famer is starred: "Oscar Robertson*".
-                let name = cell("player").trimmingCharacters(in: CharacterSet(charactersIn: "*"))
-                guard !name.isEmpty, name != "Player" else { continue }
+                func cell(_ stat: String) -> String { Text.cell(row, stat) }
+                // A Hall of Famer is starred: "Oscar Robertson*". The Coach of the Year table lists coaches.
+                let player = cell("player")
+                let name = (player.isEmpty ? cell("coach") : player).trimmingCharacters(in: CharacterSet(charactersIn: "*"))
+                guard !name.isEmpty, name != "Player", name != "Coach" else { continue }
                 let group = cell("all_nba_team")
                 guard seen.insert(group + name).inserted else { continue }
+                let coach = player.isEmpty
+                    ? row.firstMatch(of: /data-stat="coach"[^>]*>\s*<a href="\/coaches\/([a-z0-9]+)\.html"/).map { String($0.1) } ?? ""
+                    : ""
                 rows.append(Vote(group: group.first.flatMap { groups[$0] } ?? "", rank: cell("rank"), name: name,
                                  pos: cell("pos"), team: cell("team_id"), first: cell("votes_first"),
-                                 points: cell("points_won"), share: cell("award_share")))
+                                 points: cell("points_won"), share: cell("award_share"), coach: coach))
             }
             tables[id] = rows
         }

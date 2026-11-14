@@ -284,3 +284,86 @@ struct PanelWindow: NSViewRepresentable {
         }
     }
 }
+
+// MARK: Titles and awards
+
+/// Lays its views out in lines, right-aligned, wrapping to a new line when the width runs out.
+struct TrailingFlow: SwiftUI.Layout {
+    var spacing: CGFloat = 0
+    var lineSpacing: CGFloat = 3
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let lines = self.lines(subviews, width: proposal.width ?? .infinity)
+        let width = lines.map(\.width).max() ?? 0
+        let height = lines.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(lines.count - 1, 0))
+        return CGSize(width: min(width, proposal.width ?? width), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in lines(subviews, width: bounds.width) {
+            var x = bounds.maxX - line.width
+            for index in line.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += line.height + lineSpacing
+        }
+    }
+
+    private struct Line {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func lines(_ subviews: Subviews, width: CGFloat) -> [Line] {
+        var lines: [Line] = [Line()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let extra = lines[lines.count - 1].indices.isEmpty ? size.width : size.width + spacing
+            if lines[lines.count - 1].width + extra > width, !lines[lines.count - 1].indices.isEmpty {
+                lines.append(Line())
+            }
+            let added = lines[lines.count - 1].indices.isEmpty ? size.width : size.width + spacing
+            lines[lines.count - 1].indices.append(index)
+            lines[lines.count - 1].width += added
+            lines[lines.count - 1].height = max(lines[lines.count - 1].height, size.height)
+        }
+        return lines
+    }
+}
+
+/// A title or an award and the seasons it was won, each of which may open something.
+/// The seasons wrap to more lines when there are many.
+struct HonorRow: View {
+    let label: String
+    let seasons: [String]
+    var title = false
+    let link: (String) -> (() -> Void)?
+
+    var body: some View {
+        Row {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if title {
+                    Image(systemName: "trophy.fill").font(.system(size: 10)).foregroundStyle(.yellow)
+                }
+                Text(label).font(.system(size: 12.5)).lineLimit(1).fixedSize()
+                Spacer(minLength: 12)
+                TrailingFlow {
+                    ForEach(Array(seasons.enumerated()), id: \.offset) { index, season in
+                        HStack(spacing: 0) {
+                            SeasonLink(season: season, action: link(season))
+                            if index < seasons.count - 1 { Text(", ") }
+                        }
+                    }
+                }
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 5)
+        }
+    }
+}

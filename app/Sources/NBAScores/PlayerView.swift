@@ -106,25 +106,7 @@ struct PlayerView: View {
     }
 
     private func award(_ award: Award, title: Bool) -> some View {
-        Row(height: 24) {
-            HStack(spacing: 6) {
-                if title {
-                    Image(systemName: "trophy.fill").font(.system(size: 10)).foregroundStyle(.yellow)
-                }
-                Text(award.label).font(.system(size: 12.5)).lineLimit(1)
-                Spacer()
-                HStack(spacing: 0) {
-                    ForEach(Array(award.seasons.enumerated()), id: \.offset) { index, season in
-                        SeasonLink(season: season, action: link(award, season: season, title: title))
-                        if index < award.seasons.count - 1 { Text(", ") }
-                    }
-                }
-                .font(.system(size: 11))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-        }
+        HonorRow(label: award.label, seasons: award.seasons, title: title) { link(award, season: $0, title: title) }
     }
 
     /// A title opens the bracket of its season, an award its voting, when there is one.

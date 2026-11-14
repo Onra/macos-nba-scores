@@ -60,11 +60,70 @@ public struct Library: Sendable {
         // The current season's end year, asked for by number, is still the current one.
         let latest = regular["season"]["year"].int ?? 0
         let current = season == 0 || (latest > 0 && season >= latest)
-        let page = TeamPage(id: id, info: info, roster: await roster, schedules: schedules, current: current,
+        var page = TeamPage(id: id, info: info, roster: await roster, schedules: schedules, current: current,
                             injuries: (await injured).map(Injuries.parse) ?? [:])
+        page.coaches = await teamCoaches(page.abbr, season: page.season, current: current) ?? cached?.value.coaches ?? []
         cache.save(page, key)
         return page
     }
+
+    /// The head coaches of a team's season, from its Basketball-Reference page: kept for good for a past season,
+    /// a day for the current one.
+    func teamCoaches(_ abbr: String, season: Int, current: Bool) async -> [CoachRef]? {
+        let code = Coaches.bbrefCode(abbr, season: season)
+        guard !code.isEmpty, season > 0 else { return [] }
+        let key = "coaches/team-\(code)-\(season)"
+        if let cached = cache.load([CoachRef].self, key), !current || cached.age < Library.day { return cached.value }
+        guard let html = await web.page(URL(string: "\(Library.bbref)/teams/\(code)/\(season).html")!) else { return nil }
+        let coaches = Coaches.teamCoaches(html: html)
+        if !coaches.isEmpty { cache.save(coaches, key) }
+        return coaches
+    }
+
+    // MARK: Coaches
+
+    /// A coach's page, from Basketball-Reference, kept for a day (a month for a coach who no longer coaches).
+    /// `season`: the season being played, by the year it ends. Without a photo there, NBA.com has one for
+    /// the head coaches of today.
+    public func coach(_ code: String, season: Int, force: Bool = false) async -> CoachPage? {
+        let key = "coaches/\(code)"
+        let cached = cache.load(CoachPage.self, key)
+        if !force, let cached {
+            let active = (cached.value.seasons.first?.year ?? 0) >= season - 1
+            if cached.age < (active ? Library.day : 30 * Library.day) { return cached.value }
+        }
+        guard let html = await web.page(URL(string: "\(Library.bbref)/coaches/\(code).html")!) else { return cached?.value }
+        var page = CoachPage(code: code, html: html)
+        guard !page.name.isEmpty else { return cached?.value }
+        let directory = await teams()
+        for i in page.seasons.indices {
+            page.seasons[i].teamID = Awards.teamID(page.seasons[i].team, season: page.seasons[i].year, teams: directory)
+        }
+        let latest = page.seasons.first
+        let team = directory.first { $0.id == latest?.teamID }
+        if let latest, latest.year >= season, let team {
+            page.role = "\(latest.assistant ? "Assistant coach" : "Head coach") · \(team.name)"
+            if page.photo == nil, !latest.assistant { page.photo = await nbaPhoto(page.name, team: team.abbr) }
+        } else {
+            page.role = page.headCoach ? "Former head coach" : "Former assistant coach"
+        }
+        cache.save(page, key)
+        return page
+    }
+
+    /// A coach's photo on NBA.com, found on his team's page there. NBA.com answers a silhouette for anyone
+    /// without a photo: that is no photo.
+    func nbaPhoto(_ name: String, team abbr: String) async -> URL? {
+        guard let teamID = Coaches.nbaTeamIDs[abbr],
+              let html = await web.page(URL(string: "https://www.nba.com/team/\(teamID)")!),
+              let id = Coaches.nbaCoachID(html: html, name: name) else { return nil }
+        let url = Coaches.nbaHeadshot(id)
+        async let photo = try? web.data(url, timeout: 10)
+        async let silhouette = try? web.data(Coaches.nbaHeadshot("0"), timeout: 10)
+        guard let photo = await photo, photo != (await silhouette) else { return nil }
+        return url
+    }
+
 
     // MARK: Players
 
@@ -337,7 +396,8 @@ public struct Library: Sendable {
         }
         var rows = Awards.rows(kind, in: tables ?? [:])
         guard !rows.isEmpty else { return AwardPage(kind: kind, season: season) }
-        async let ids = athleteIDs(rows.map(\.name))
+        // Coaches have no ESPN card: their page is Basketball-Reference's.
+        async let ids = kind == .coy ? [:] : athleteIDs(rows.map(\.name))
         let directory = await teams()
         let athletes = await ids
         for i in rows.indices {

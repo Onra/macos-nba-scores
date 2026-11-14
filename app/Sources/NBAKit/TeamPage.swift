@@ -102,6 +102,8 @@ public struct TeamPage: Codable, Sendable {
     public var roadRecord = ""
     public var standing = ""
     public var coach = ""
+    /// The season's head coaches, from Basketball-Reference: past seasons too.
+    public var coaches: [CoachRef] = []
     public var roster: [RosterPlayer] = []
     public var games: [TeamGame] = []
 

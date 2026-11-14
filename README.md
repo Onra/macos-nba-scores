@@ -14,9 +14,9 @@ It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-
 | :---: | :---: |
 | <img src="screenshots/playoffs.png" alt="The playoffs of 2025-26: the bracket of series with the West on the left and the East on the right, the champion in the middle, and the play-in games below" width="420"> | <img src="screenshots/cup.png" alt="The 2025-26 NBA Cup: the knockout tree with the champion, then the six group tables" width="420"> |
 
-| Standings | Team page | Award voting |
-| :---: | :---: | :---: |
-| <img src="screenshots/standings.png" alt="The regular-season standings of both conferences side by side" width="330"> | <img src="screenshots/team.png" alt="A team page: record, roster with injuries, and every game of the season" width="240"> | <img src="screenshots/award.png" alt="The voting of the 2024-25 MVP, with the winner's line marked" width="250"> |
+| Standings | Team page | Coach | Award voting |
+| :---: | :---: | :---: | :---: |
+| <img src="screenshots/standings.png" alt="The regular-season standings of both conferences side by side" width="260"> | <img src="screenshots/team.png" alt="A team page: record, coach, roster with injuries, and every game of the season" width="190"> | <img src="screenshots/coach.png" alt="A coach's page: photo, bio, record, titles and awards, and his career season by season" width="190"> | <img src="screenshots/award.png" alt="The voting of the 2024-25 MVP, with the winner's line marked" width="200"> |
 
 ## Features
 
@@ -38,6 +38,7 @@ It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-
 **Search and team pages**
 - `/`, `⌘F` or the magnifying glass searches every NBA player and team, past and present: Bill Russell, Michael Jordan, the Lakers. The old names of today's franchises lead to the team they became: `Sonics` finds the Thunder, `Bobcats` the Hornets, `New Jersey Nets` the Nets
 - A team's page: its record (overall, home and away), its place in the standings, the coach, the roster with ages and injuries, and every game of the season (regular season, play-in and playoffs) with its result. NBA Cup games are marked with their round, and the Cup final is left out of the record, as in the standings
+- A team's coach, past seasons included, opens his page: photo, age, birthplace, college, his record in the regular season and the playoffs, his NBA titles and Coach of the Year awards (each opens its bracket or its voting), and his career season by season, assistant years included, each season opening that team's page for that season. A former player's playing record opens his card
 - The chevrons on a team page step through its seasons back to 1992-93, the first one ESPN has whole. Past seasons show the games only: ESPN has no past rosters
 - Team logos and names link to their page everywhere: in the scores, the box score, the standings, and on a player card, where each season of his career opens that team's page for that season
 
@@ -102,7 +103,9 @@ The app is pure Swift: SwiftUI for the panel (`app/Sources/NBAScores`), and a sm
 | Salaries of the seasons to come, with options | Basketball-Reference, one page for every player, fetched at most once a day |
 | Injuries and estimated return dates | ESPN |
 | NBA champions, for the titles on a card | Basketball-Reference, one page, kept for a week |
-| Award voting | Basketball-Reference, one page per season, kept for good |
+| Award voting, Coach of the Year included | Basketball-Reference, one page per season, kept for good |
+| Coaches: who coached a team's season, and their pages | Basketball-Reference, kept a day for today's coaches, for good for a past season |
+| Photos of today's head coaches that Basketball-Reference does not have | NBA.com |
 | NBA Cup results and tables | ESPN's scoreboard of each day of the Cup, with the Cup tiebreakers applied |
 | NBA Cup group names and clinch marks | NBA.com. When it does not answer, groups are found from the schedule and shown without a letter |
 | Playoff bracket | ESPN's scoreboard of each day from April to June, and the standings for the seeds |

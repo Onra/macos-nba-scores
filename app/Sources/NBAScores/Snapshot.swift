@@ -14,6 +14,11 @@ enum Snapshot {
             await model.fetchCurrent()
             await model.fetch(TableKey(table: .cup, season: model.seasonYear))
             await shoot(model, "scores", to: directory)
+            // Before tonight's games have started, the box score and the rest come from the day before.
+            if !model.viewGames.contains(where: \.hasBoxScore) {
+                model.stepDay(-1)
+                await model.fetchView()
+            }
 
             if let game = model.viewGames.first(where: \.hasBoxScore) {
                 model.openBox(game)
@@ -46,6 +51,25 @@ enum Snapshot {
                 model.openTeam(game.home.team.id)
                 await model.fetchTeam()
                 await shoot(model, "team", to: directory)
+                if let coach = model.teamPages[model.stack.last!]?.coaches.first {
+                    model.openCoach(coach.code)
+                    await model.fetchCoach()
+                    await shoot(model, "coach", to: directory)
+                    if let year = model.coaches[coach.code]?.coachOfTheYear.first.map(Season.endYear) {
+                        model.openAward(.coy, season: year, me: coach.code)
+                        await model.fetchAward()
+                        await shoot(model, "award-coach", to: directory)
+                        model.back()
+                    }
+                    model.back()
+                }
+                // A coach without a photo on Basketball-Reference, and one from long ago.
+                for code in ["daignma99c", "auerbre99c"] {
+                    model.openCoach(code)
+                    await model.fetchCoach()
+                    await shoot(model, "coach-\(code)", to: directory)
+                    model.back()
+                }
                 model.stepTeamSeason(-1)
                 await model.fetchTeam()
                 await shoot(model, "team-past", to: directory)
