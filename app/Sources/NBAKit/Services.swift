@@ -34,11 +34,12 @@ public struct Library: Sendable {
     }
 
     /// A team's page for a season (the year it ends; 0 for the current one).
-    /// The current season is kept for 5 minutes, a finished past season for good.
-    public func team(_ id: String, season: Int = 0) async -> TeamPage? {
+    /// The current season is kept for 5 minutes, a finished past season for good. `force` asks ESPN again
+    /// whatever the cache holds, which stays the answer if ESPN can't be reached.
+    public func team(_ id: String, season: Int = 0, force: Bool = false) async -> TeamPage? {
         let key = "teams/\(id)-\(season)"
         let cached = cache.load(TeamPage.self, key)
-        if let cached, cached.value.final || cached.age < 300 { return cached.value }
+        if let cached, cached.value.final || (!force && cached.age < 300) { return cached.value }
 
         let base = "\(Library.site)/teams/\(id)"
         let query = season > 0 ? "?season=\(season)&" : "?"
@@ -67,11 +68,12 @@ public struct Library: Sendable {
 
     // MARK: Players
 
-    /// A player's card, kept for 6 hours.
-    public func player(_ id: String) async -> PlayerCard? {
+    /// A player's card, kept for 6 hours. `force` builds it again whatever the cache holds, which stays
+    /// the answer if ESPN can't be reached.
+    public func player(_ id: String, force: Bool = false) async -> PlayerCard? {
         let key = "players/\(id)"
         let cached = cache.load(PlayerCard.self, key)
-        if let cached, cached.age < 6 * 3600 { return cached.value }
+        if !force, let cached, cached.age < 6 * 3600 { return cached.value }
 
         async let bio = web.optionalJSON(URL(string: Library.athletes + id)!)
         async let overview = web.optionalJSON(URL(string: Library.athletes + id + "/overview")!)

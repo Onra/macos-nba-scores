@@ -238,13 +238,15 @@ final class AppModel {
         else if tab == .standings { await fetchStandings(force: force) }
         else if !viewingCurrent { await fetchView() }
         if openBoxID != nil { await fetchBox(force: force) }
-        if case .team = stack.last { await fetchTeam() }
+        // A refresh the user asked for goes past the cache.
+        if case .team = stack.last { await fetchTeam(force: force) }
+        if case .player = stack.last, force { await fetchPlayer(force: true) }
         if case .award = stack.last { await fetchAward() }
     }
 
-    func fetchPlayer() async {
+    func fetchPlayer(force: Bool = false) async {
         guard case .player(let id) = stack.last, let route = stack.last else { return }
-        if let card = await library.player(id) {
+        if let card = await library.player(id, force: force) {
             players[id] = card
             failed.remove(route)
         } else if players[id] == nil {
@@ -252,9 +254,9 @@ final class AppModel {
         }
     }
 
-    func fetchTeam() async {
+    func fetchTeam(force: Bool = false) async {
         guard case .team(let id, let season) = stack.last, let route = stack.last else { return }
-        if let page = await library.team(id, season: season) {
+        if let page = await library.team(id, season: season, force: force) {
             teamPages[route] = page
             failed.remove(route)
         } else if teamPages[route] == nil {
