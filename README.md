@@ -4,24 +4,50 @@
 
 NBA Scores is a menu bar app for macOS: the games of the day, box scores, player cards, team pages, standings, the NBA Cup and the playoffs, one click away from the menu bar. It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-scores), the same widget for the Omarchy shell.
 
-**Work in progress.** Only the UI mockup exists for now; it shows fake data.
+**Work in progress.** What works today: the scores of every game day with live refresh, box scores, recap links and the regular-season standings. Player cards, team pages, search, the NBA Cup, the playoffs and award voting are still to come.
 
-## Mockup
+The data comes from ESPN's public API, which needs no key.
 
-`prototype/` is a throwaway SwiftUI mockup of the main screens: the menu bar item, the scores, a box score, a player card, the standings and the playoff bracket. It needs macOS 26 and Xcode 26 or later.
+## Install
 
-```sh
-cd prototype
-swift run
-```
-
-A basketball appears in the menu bar. Click it to open the panel, and right-click it for the menu with Quit.
-
-To render every screen to PNG files, in light and dark, without opening anything:
+It needs macOS 26 and Xcode 26 or later.
 
 ```sh
-swift run NBAScoresMock --snapshot /tmp/nba-scores-shots
+cd app
+./build.sh install
 ```
+
+This builds `NBA Scores.app`, copies it to `/Applications` and launches it. A basketball appears in the menu bar, with `● 3` next to it while three games are live. The app starts at login; the right-click menu turns that off.
+
+## Usage
+
+Click the basketball to open the panel, and right-click it for Refresh, Launch at Login and Quit.
+
+| Key | Action |
+| --- | --- |
+| `←` `→` | Previous or next game day; in a box score, previous or next game; in the standings, previous or next season |
+| `↑` `↓` | Move through the games |
+| `Enter` | Open the box score of the selected game |
+| `Esc` | Back, or close the panel |
+| `y` | Open the recap of the selected game or of the open box score |
+| `r` | Refresh |
+| `t` | Back to today |
+| `b` | Scores |
+| `s` | Standings |
+
+A day is a US Eastern date, as for the NBA: a game that tips off at 01:30 in Paris belongs to the day before. Live games refresh every 30 seconds, and everything else every 5 minutes.
+
+## Development
+
+```sh
+cd app
+swift test
+swift run NBAScores --snapshot /tmp/nba-scores-shots
+```
+
+The second command fetches live data and renders every screen to PNG files, in light and dark, without opening anything.
+
+`prototype/` is the throwaway SwiftUI mockup the design was approved on; it shows fake data and will go once the app covers every screen.
 
 ## Plan
 
