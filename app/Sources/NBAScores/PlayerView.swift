@@ -104,20 +104,49 @@ struct PlayerView: View {
                 }
                 Text(award.label).font(.system(size: 12.5)).lineLimit(1)
                 Spacer()
-                Text(award.seasons.joined(separator: ", "))
-                    .font(.system(size: 11))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                HStack(spacing: 0) {
+                    ForEach(Array(award.seasons.enumerated()), id: \.offset) { index, season in
+                        SeasonLink(season: season, action: link(award, season: season, title: title))
+                        if index < award.seasons.count - 1 { Text(", ") }
+                    }
+                }
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
         }
+    }
+
+    /// A title opens the bracket of its season, when there is one.
+    private func link(_ award: Award, season: String, title: Bool) -> (() -> Void)? {
+        guard title else { return nil }
+        let table: Table = award.name.contains("Cup") ? .cup : .playoffs
+        let year = Season.endYear(season)
+        return year >= table.firstSeason ? { model.openBracket(table, season: year) } : nil
     }
 
     private func section(_ title: String, columns: Bool = false, @ViewBuilder rows: () -> some View) -> some View {
         VStack(spacing: 2) {
             SectionHeader(title: title, columns: columns ? PlayerCard.columns : [], widths: columns ? PlayerView.widths : [])
             rows()
+        }
+    }
+}
+
+/// A season of an award: underlined under the pointer when it opens something.
+struct SeasonLink: View {
+    let season: String
+    let action: (() -> Void)?
+    @State private var hovering = false
+
+    var body: some View {
+        if let action {
+            Button(action: action) { Text(season).underline(hovering).foregroundStyle(hovering ? .primary : .secondary) }
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+        } else {
+            Text(season)
         }
     }
 }

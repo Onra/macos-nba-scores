@@ -195,6 +195,125 @@ public struct Library: Sendable {
         return Titles.won(career: career, champions: nba, cups: cup, logs: logs)
     }
 
+    // MARK: NBA Cup and playoffs
+
+    /// The games of one day, as last fetched. A finished day is never fetched again.
+    struct DayEntry<G: Codable & Sendable>: Codable, Sendable {
+        var games: [G]
+        var final: Bool
+        var at: Date
+    }
+
+    struct CupCache: Codable, Sendable {
+        var days: [String: DayEntry<CupGame>] = [:]
+        var official: CupOfficial?
+        var officialAt: Date?
+        var conferences: [String: String] = [:]
+    }
+
+    struct PlayoffCache: Codable, Sendable {
+        var days: [String: DayEntry<PlayoffGame>] = [:]
+        var teams: [String: SeededTeam] = [:]
+        var teamsAt: Date?
+    }
+
+    /// The days of a window that need fetching: not the finished ones, nor the ones to come that were
+    /// looked at in the last 6 hours (the knockout schedule is only set once the groups are done).
+    static func stale<G>(_ window: [String], in days: [String: DayEntry<G>], today: String, now: Date, horizon: Int? = nil) -> [String] {
+        window.filter { day in
+            if let entry = days[day] {
+                if entry.final { return false }
+                if day > today, now.timeIntervalSince(entry.at) < 6 * 3600 { return false }
+            }
+            // Months away: nothing is scheduled yet.
+            if let horizon, day > today, GameDay.days(from: today, to: day) > horizon { return false }
+            return true
+        }
+    }
+
+    /// The NBA Cup of a season (the year it ends). `today`: the day ESPN reports for now.
+    /// The scoreboard of each day of the Cup is the reliable source for every result; NBA.com adds the group
+    /// names and the clinch marks when it answers.
+    public func cup(season: Int, today: String) async -> CupData? {
+        let start = season - 1
+        let key = "cup-\(Season.label(season))"
+        var cached = cache.load(CupCache.self, key)?.value ?? CupCache()
+        let now = Date()
+        let todo = Library.stale(Cup.window(startYear: start), in: cached.days, today: today, now: now)
+
+        // A Cup played long ago does not change, and NBA.com is slow to say so.
+        let askOfficial = !(cached.officialAt.map { now.timeIntervalSince($0) < 600 } ?? false)
+            && !(cached.official != nil && todo.isEmpty)
+        let askConferences = cached.conferences.isEmpty
+        async let boards = web.scoreboards(todo)
+        async let official = askOfficial ? cupOfficial(season: season) : nil
+        async let conferences = askConferences ? self.conferences() : nil
+
+        let fetched = await boards
+        for (day, board) in fetched {
+            let games = Cup.games(day: day, scoreboard: board)
+            cached.days[day] = DayEntry(games: games, final: day < today && games.allSatisfy { $0.state == .post }, at: now)
+        }
+        // The group names never change in a season: keep what we had when NBA.com does not answer.
+        if let official = await official {
+            cached.official = official
+            cached.officialAt = now
+        }
+        if let conferences = await conferences { cached.conferences = conferences }
+        if cached.days.isEmpty { return nil }
+        cache.save(cached, key)
+        let games = cached.days.keys.sorted().flatMap { cached.days[$0]!.games }
+        return Cup.build(startYear: start, games: games, official: cached.official, conferences: cached.conferences)
+    }
+
+    func cupOfficial(season: Int) async -> CupOfficial? {
+        let url = URL(string: "https://stats.nba.com/stats/iststandings?LeagueID=00&Season=\(Season.label(season))&Section=group")!
+        return await web.nbaStats(url).flatMap(CupOfficial.init)
+    }
+
+    /// Team nickname -> "East" or "West".
+    func conferences() async -> [String: String]? {
+        guard let teams = await seededTeams(season: nil) else { return nil }
+        return Dictionary(teams.values.map { ($0.nick, $0.conf) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    func seededTeams(season: Int?) async -> [String: SeededTeam]? {
+        guard let json = await web.optionalJSON(ESPN.standingsURL(season: season)) else { return nil }
+        let teams = SeededTeam.parse(standings: json)
+        return teams.isEmpty ? nil : teams
+    }
+
+    /// The playoffs of a season (the year it ends): play-in, bracket of series, champion.
+    /// The regular-season standings give the seeds and, before the playoffs, the projected bracket.
+    public func playoffs(season: Int, today: String) async -> PlayoffBracket? {
+        let key = "playoffs-\(season)"
+        var cached = cache.load(PlayoffCache.self, key)?.value ?? PlayoffCache()
+        let now = Date()
+        let todo = Library.stale(Playoffs.window(season: season), in: cached.days, today: today, now: now, horizon: 60)
+
+        // The standings of a finished season do not move.
+        let askTeams = !(cached.teamsAt.map { now.timeIntervalSince($0) < 3 * 3600 } ?? false)
+            && !(!cached.teams.isEmpty && todo.isEmpty)
+        async let boards = web.scoreboards(todo)
+        async let teams = askTeams ? seededTeams(season: season) : nil
+
+        let fetched = await boards
+        for (day, board) in fetched {
+            let games = Playoffs.games(day: day, scoreboard: board)
+            cached.days[day] = DayEntry(games: games, final: day < today && games.allSatisfy { $0.state == .post }, at: now)
+        }
+        if let teams = await teams {
+            cached.teams = teams
+            cached.teamsAt = now
+        }
+        if cached.teams.isEmpty { return nil }
+        cache.save(cached, key)
+        // A game can show up under two days (late tip-offs): keep it once.
+        var seen: Set<String> = []
+        let games = cached.days.keys.sorted().flatMap { cached.days[$0]!.games }.filter { seen.insert($0.id).inserted }
+        return Playoffs.build(season: season, games: games, teams: cached.teams)
+    }
+
     // MARK: Search
 
     /// NBA teams and players, past ones included. Empty under two characters.

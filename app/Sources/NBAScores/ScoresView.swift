@@ -72,7 +72,7 @@ struct GameRow: View {
 
     /// The Cup round, else the series or note, else the TV network.
     @ViewBuilder private var note: some View {
-        let text = game.cup.map { $0 == .group || $0 == .other ? "Cup" : $0.rawValue }
+        let text = game.cup.map { $0 == .group || $0 == .other ? (model.cupGroup(of: game) ?? "Cup") : $0.rawValue }
             ?? (game.note.isEmpty ? game.network : game.note)
         if !text.isEmpty {
             HStack(spacing: 3) {

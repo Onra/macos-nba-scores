@@ -154,6 +154,9 @@ public struct Game: Identifiable, Hashable, Sendable {
         return URL(string: "https://www.nba.com/watch/video/game-recap-\(slug(winner))-\(winner.score ?? 0)-\(slug(loser))-\(loser.score ?? 0)")
     }
 
+    /// The tip-off of a game, from ESPN's date.
+    public static func tipoff(_ text: String) -> Date? { parseDate(text) }
+
     /// ESPN dates come with or without seconds: "2026-11-14T00:00Z".
     static func parseDate(_ text: String) -> Date? {
         if let date = try? Date(text, strategy: .iso8601) { return date }

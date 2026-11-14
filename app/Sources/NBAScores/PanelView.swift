@@ -6,8 +6,11 @@ struct PanelView: View {
     @FocusState private var focused: Bool
 
     private var width: CGFloat {
-        if !model.stack.isEmpty { return Layout.detail }
-        return model.tab == .scores ? Layout.compact : Layout.wide
+        switch model.stack.last {
+        case .bracket: Layout.wide
+        case .some: Layout.detail
+        case nil: model.tab == .scores ? Layout.compact : Layout.wide
+        }
     }
 
     var body: some View {
@@ -45,10 +48,12 @@ struct PanelView: View {
         case .player(let id): PlayerView(model: model, id: id)
         case .team: TeamView(model: model)
         case .search: SearchView(model: model)
+        case .series(let series): SeriesView(model: model, series: series)
+        case .bracket(let key): StandingsView(model: model, key: key)
         case nil:
             switch model.tab {
             case .scores: ScoresView(model: model)
-            case .standings: StandingsView(model: model)
+            case .standings: StandingsView(model: model, key: model.tableKey)
             }
         }
     }
@@ -57,8 +62,8 @@ struct PanelView: View {
     private var hasContent: Bool {
         switch model.stack.last {
         case .box(let id): model.boxes[id] != nil
-        case .player, .team, .search: false
-        case nil: model.tab == .scores ? model.viewLoaded : model.standings[model.standingsSeason] != nil
+        case .player, .team, .search, .series, .bracket: false
+        case nil: model.tab == .scores ? model.viewLoaded : false
         }
     }
 
@@ -77,7 +82,7 @@ struct PanelView: View {
             switch top {
             case .box: model.stepBox(delta)
             case .team: model.stepTeamSeason(delta)
-            case .player, .search: return false
+            case .player, .search, .series, .bracket: return false
             case nil: model.tab == .scores ? model.stepDay(delta) : model.stepSeason(delta)
             }
         case .upArrow, .downArrow:
@@ -95,9 +100,12 @@ struct PanelView: View {
             switch press.characters {
             case "/": model.openSearch()
             case "r": model.refreshNow()
-            case "t": model.show(.scores); model.goCurrent()
-            case "b": model.show(.scores)
-            case "s": model.show(model.tab == .standings && model.stack.isEmpty ? .scores : .standings)
+            case "t": model.show(Tab.scores); model.goCurrent()
+            case "b": model.show(Tab.scores)
+            case "s": model.show(model.tab == .standings && model.stack.isEmpty ? Tab.scores : Tab.standings)
+            case "p": model.cycleTable()
+            case "c": model.show(Table.cup)
+            case "o": model.show(Table.playoffs)
             case "y":
                 guard let url = model.recapTarget else { return false }
                 model.openRecap(url)
@@ -120,6 +128,8 @@ struct Header: View {
             case .player(let id): player(id)
             case .team: team
             case .search: search
+            case .series(let series): self.series(series)
+            case .bracket(let key): detail { TitleBlock(title: Season.label(key.season), subtitle: tableSubtitle(key)) }
             case nil: top
             }
         }
@@ -129,7 +139,7 @@ struct Header: View {
 
     private var top: some View {
         HStack(spacing: 10) {
-            Picker("View", selection: Binding(get: { model.tab }, set: { model.show($0) })) {
+            Picker("View", selection: Binding(get: { model.tab }, set: { (tab: Tab) in model.show(tab) })) {
                 ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
             }
             .pickerStyle(.segmented)
@@ -147,13 +157,21 @@ struct Header: View {
                 )
             } else {
                 StepTitle(
-                    title: Season.label(model.standingsSeason), subtitle: "Regular season",
-                    canPrev: model.standingsSeason > Standings.firstSeason,
+                    title: Season.label(model.standingsSeason), subtitle: tableSubtitle(model.tableKey),
+                    canPrev: model.standingsSeason > model.table.firstSeason,
                     canNext: model.standingsSeason < max(model.seasonYear, model.latestSeason),
                     prev: { model.stepSeason(-1) }, next: { model.stepSeason(1) }
                 )
             }
             Spacer(minLength: 0)
+            if model.tab == .standings {
+                Picker("Table", selection: Binding(get: { model.table }, set: { model.show($0) })) {
+                    ForEach(Table.allCases, id: \.self) { Text($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
             HStack(spacing: 2) {
                 IconButton(symbol: "magnifyingglass") { model.openSearch() }.help("Search teams and players (/)")
                 RefreshButton(model: model)
@@ -167,6 +185,22 @@ struct Header: View {
             return "Today · \(games.count == 1 ? "1 game" : "\(games.count) games")"
         }
         return games.isEmpty ? (model.viewingCurrent ? "Today" : " ") : games.subtitle
+    }
+
+    /// "Regular season", "NBA Cup", "Playoffs · final"
+    private func tableSubtitle(_ key: TableKey) -> String {
+        switch key.table {
+        case .season: "Regular season"
+        case .cup: model.cups[key.season].map { $0.done ? "NBA Cup · final" : "NBA Cup" } ?? "NBA Cup"
+        case .playoffs: model.brackets[key.season].map { "Playoffs · \($0.phase.rawValue)" } ?? "Playoffs"
+        }
+    }
+
+    private func series(_ series: SeriesCard) -> some View {
+        detail {
+            TitleBlock(title: "\(series.top.abbr)  \(series.top.wins) – \(series.bottom.wins)  \(series.bottom.abbr)",
+                       subtitle: series.label, live: series.state == .live)
+        }
     }
 
     /// The name of the screen under this one, on the back button.

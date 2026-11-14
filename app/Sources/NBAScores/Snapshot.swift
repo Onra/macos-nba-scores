@@ -12,6 +12,7 @@ enum Snapshot {
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
             let model = AppModel()
             await model.fetchCurrent()
+            await model.fetch(TableKey(table: .cup, season: model.seasonYear))
             await shoot(model, "scores", to: directory)
 
             if let game = model.viewGames.first(where: \.hasBoxScore) {
@@ -44,9 +45,23 @@ enum Snapshot {
             await model.fetchView()
             await shoot(model, "scores-next", to: directory)
 
-            model.show(.standings)
+            model.show(Tab.standings)
             await model.fetchStandings()
             await shoot(model, "standings", to: directory)
+            for (table, name) in [(Table.cup, "cup"), (.playoffs, "playoffs")] {
+                model.show(table)
+                await model.fetchStandings()
+                await shoot(model, name, to: directory)
+                model.stepSeason(-1)
+                await model.fetchStandings()
+                await shoot(model, "\(name)-past", to: directory)
+                model.stepSeason(1)
+            }
+            if let series = model.brackets[model.seasonYear - 1]?.finals, !series.games.isEmpty {
+                model.openSeries(series)
+                await shoot(model, "series", to: directory)
+                model.back()
+            }
             exit(0)
         }
         app.run()

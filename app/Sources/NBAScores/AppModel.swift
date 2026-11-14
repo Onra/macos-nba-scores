@@ -7,6 +7,29 @@ enum Tab: String, CaseIterable {
     case standings = "Standings"
 }
 
+/// The standings come in three tables, each for any season.
+enum Table: String, CaseIterable {
+    case season = "Season"
+    case cup = "NBA Cup"
+    case playoffs = "Playoffs"
+
+    /// The first season of the table, by the year it ends: ESPN's standings, the 2023-24 In-Season Tournament,
+    /// the first season ESPN labels playoff rounds for.
+    var firstSeason: Int {
+        switch self {
+        case .season: Standings.firstSeason
+        case .cup: CupData.firstSeason
+        case .playoffs: PlayoffBracket.firstSeason
+        }
+    }
+}
+
+/// A table of a season, by the year it ends.
+struct TableKey: Hashable {
+    let table: Table
+    let season: Int
+}
+
 /// A view opened on top of the scores or the standings; Esc steps back.
 enum Route: Hashable {
     case box(String)
@@ -14,6 +37,9 @@ enum Route: Hashable {
     /// A team's season, by the year it ends; 0 for the current one.
     case team(String, Int)
     case search
+    case series(SeriesCard)
+    /// The Cup or the playoffs of a season, opened from a title on a player card.
+    case bracket(TableKey)
 
     var title: String {
         switch self {
@@ -21,6 +47,8 @@ enum Route: Hashable {
         case .player: "Player"
         case .team: "Team"
         case .search: "Search"
+        case .series: "Series"
+        case .bracket(let key): key.table.rawValue
         }
     }
 }
@@ -43,6 +71,11 @@ final class AppModel {
     // Standings, by season
     private(set) var standings: [Int: Standings] = [:]
     private(set) var standingsSeason = 0
+    private(set) var table = Table.season
+    private(set) var cups: [Int: CupData] = [:]
+    private(set) var brackets: [Int: PlayoffBracket] = [:]
+    private(set) var failedTables: Set<TableKey> = []
+    private var loadingTables: Set<TableKey> = []
 
     // Player cards by athlete id, team pages by route, and the routes that could not be loaded
     private(set) var players: [String: PlayerCard] = [:]
@@ -93,7 +126,28 @@ final class AppModel {
     /// Changes whenever another screen is shown.
     var screen: AnyHashable {
         if let route = stack.last { return AnyHashable(route) }
-        return tab == .scores ? AnyHashable(viewDay) : AnyHashable(standingsSeason)
+        return tab == .scores ? AnyHashable(viewDay) : AnyHashable(TableKey(table: table, season: standingsSeason))
+    }
+
+    /// The table on screen: the standings tab's, or the bracket opened from a player card.
+    var tableKey: TableKey {
+        if case .bracket(let key) = stack.last { return key }
+        return TableKey(table: table, season: standingsSeason > 0 ? standingsSeason : latestSeason)
+    }
+
+    func loaded(_ key: TableKey) -> Bool {
+        switch key.table {
+        case .season: standings[key.season] != nil
+        case .cup: cups[key.season] != nil
+        case .playoffs: brackets[key.season] != nil
+        }
+    }
+
+    /// "East A" for a game of the Cup's group play, once the groups are known.
+    func cupGroup(of game: Game) -> String? {
+        guard game.cup == .group, let groups = cups[seasonYear]?.teamGroup,
+              let group = groups[game.home.team.nick] ?? groups[game.away.team.nick] else { return nil }
+        return group.replacingOccurrences(of: " Group", with: "")
     }
 
     // MARK: Fetching
@@ -140,24 +194,37 @@ final class AppModel {
         }
     }
 
+    /// The table on screen.
     func fetchStandings(force: Bool = false) async {
-        let season = standingsSeason > 0 ? standingsSeason : latestSeason
-        // A past season is final.
-        if !force, season > 0, season < latestSeason, standings[season] != nil { return }
-        do {
-            let result = try await espn.standings(season: season > 0 ? season : nil)
-            standings[season] = result
-            error = nil
-        } catch {
-            self.error = "Couldn't reach ESPN"
+        await fetch(tableKey, force: force)
+    }
+
+    func fetch(_ key: TableKey, force: Bool = false) async {
+        guard key.season > 0, !loadingTables.contains(key) else { return }
+        loadingTables.insert(key)
+        defer { loadingTables.remove(key) }
+        switch key.table {
+        case .season:
+            // A past season is final.
+            if !force, key.season < latestSeason, standings[key.season] != nil { return }
+            if let result = try? await espn.standings(season: key.season) { standings[key.season] = result }
+        case .cup:
+            if let cup = await library.cup(season: key.season, today: currentDay) { cups[key.season] = cup }
+        case .playoffs:
+            if let bracket = await library.playoffs(season: key.season, today: currentDay) { brackets[key.season] = bracket }
         }
+        if loaded(key) { failedTables.remove(key) } else { failedTables.insert(key) }
     }
 
     /// What is on screen, plus today for the menu bar.
     func refresh(force: Bool = false) async {
         await fetchCurrent()
+        // This season's Cup groups, for the group names on the game rows: once at launch, then while the scores show.
+        let cup = TableKey(table: .cup, season: seasonYear)
+        if !loaded(cup) || (panelOpen && tab == .scores && stack.isEmpty) { Task { await fetch(cup) } }
         guard panelOpen || force else { return }
-        if tab == .standings { await fetchStandings(force: force) }
+        if case .bracket = stack.last { await fetchStandings(force: force) }
+        else if tab == .standings { await fetchStandings(force: force) }
         else if !viewingCurrent { await fetchView() }
         if openBoxID != nil { await fetchBox(force: force) }
         if case .team = stack.last { await fetchTeam() }
@@ -238,9 +305,37 @@ final class AppModel {
         self.tab = tab
         error = nil
         if tab == .standings {
+            // The table that fits the phase of the season: the playoffs during the play-in and the playoffs.
+            table = seasonType == 3 || seasonType == 5 ? .playoffs : .season
             standingsSeason = latestSeason
             Task { await fetchStandings() }
         }
+    }
+
+    /// The same season in another table, within what that table has.
+    func show(_ table: Table) {
+        if tab != .standings || !stack.isEmpty { show(.standings) }
+        self.table = table
+        let season = standingsSeason > 0 ? standingsSeason : latestSeason
+        standingsSeason = min(max(season, table.firstSeason), max(seasonYear, season))
+        Task { await fetchStandings() }
+    }
+
+    func cycleTable() {
+        let all = Table.allCases
+        show(all[((all.firstIndex(of: table) ?? 0) + 1) % all.count])
+    }
+
+    func openSeries(_ series: SeriesCard) {
+        guard !series.games.isEmpty else { return }
+        stack.append(.series(series))
+    }
+
+    /// The bracket of a title, from a player card; back returns to the card.
+    func openBracket(_ table: Table, season: Int) {
+        let key = TableKey(table: table, season: season)
+        stack.append(.bracket(key))
+        Task { await fetch(key) }
     }
 
     func back() {
@@ -348,7 +443,7 @@ final class AppModel {
 
     func stepSeason(_ delta: Int) {
         let season = standingsSeason + delta
-        guard season >= Standings.firstSeason, season <= max(seasonYear, latestSeason) else { return }
+        guard season >= table.firstSeason, season <= max(seasonYear, latestSeason) else { return }
         standingsSeason = season
         error = nil
         Task { await fetchStandings() }
