@@ -63,6 +63,14 @@ public struct Web: Sendable {
         return try? JSON(data: data)
     }
 
+    /// A web page and its HTTP status (0 when the site could not be reached), asked for as a browser would.
+    public func pageWithStatus(_ url: URL) async -> (html: String, status: Int) {
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.setValue(Web.browser, forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await session.data(for: request) else { return ("", 0) }
+        return (String(decoding: data, as: UTF8.self), (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
     /// A web page, asked for as a browser would.
     public func page(_ url: URL) async -> String? {
         guard let data = try? await data(url, timeout: 20, browser: true) else { return nil }

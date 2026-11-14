@@ -118,12 +118,15 @@ struct PlayerView: View {
         }
     }
 
-    /// A title opens the bracket of its season, when there is one.
+    /// A title opens the bracket of its season, an award its voting, when there is one.
     private func link(_ award: Award, season: String, title: Bool) -> (() -> Void)? {
-        guard title else { return nil }
-        let table: Table = award.name.contains("Cup") ? .cup : .playoffs
         let year = Season.endYear(season)
-        return year >= table.firstSeason ? { model.openBracket(table, season: year) } : nil
+        if title {
+            let table: Table = award.name.contains("Cup") ? .cup : .playoffs
+            return year >= table.firstSeason ? { model.openBracket(table, season: year) } : nil
+        }
+        guard let kind = AwardKind(awardName: award.name), year >= kind.firstSeason else { return nil }
+        return { model.openAward(kind, season: year, me: id) }
     }
 
     private func section(_ title: String, columns: Bool = false, @ViewBuilder rows: () -> some View) -> some View {

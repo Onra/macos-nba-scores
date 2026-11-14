@@ -314,6 +314,60 @@ public struct Library: Sendable {
         return Playoffs.build(season: season, games: games, teams: cached.teams)
     }
 
+    // MARK: Award voting
+
+    /// The voting of an award in a season, from Basketball-Reference's page of that season's awards: one page
+    /// for every award, kept for good, which keeps clear of the site's rate limit. nil when it can't be reached.
+    public func award(_ kind: AwardKind, season: Int) async -> AwardPage? {
+        let key = "awards/\(season)"
+        var tables = cache.load([String: [Vote]].self, key)?.value
+        if tables == nil {
+            let (html, status) = await web.pageWithStatus(URL(string: "\(Library.bbref)/awards/awards_\(season).html")!)
+            // A season without a page: no voting.
+            if status == 404 { return AwardPage(kind: kind, season: season) }
+            let parsed = status == 200 ? Awards.parse(html: html) : [:]
+            guard !parsed.isEmpty else { return nil }
+            cache.save(parsed, key)
+            tables = parsed
+        }
+        var rows = Awards.rows(kind, in: tables ?? [:])
+        guard !rows.isEmpty else { return AwardPage(kind: kind, season: season) }
+        async let ids = athleteIDs(rows.map(\.name))
+        let directory = await teams()
+        let athletes = await ids
+        for i in rows.indices {
+            rows[i].athlete = athletes[rows[i].name] ?? ""
+            rows[i].teamID = Awards.teamID(rows[i].team, season: season, teams: directory)
+        }
+        return AwardPage(kind: kind, season: season, rows: rows)
+    }
+
+    /// Name -> ESPN athlete id ("" when its search does not find him): the page only names the players.
+    func athleteIDs(_ names: [String]) async -> [String: String] {
+        var known = cache.load([String: String].self, "awards/ids")?.value ?? [:]
+        let todo = Set(names).filter { known[$0] == nil }
+        guard !todo.isEmpty else { return known }
+        var rest = Array(todo)[...]
+        while !rest.isEmpty {
+            let batch = rest.prefix(8)
+            rest = rest.dropFirst(8)
+            await withTaskGroup(of: (String, String?).self) { group in
+                for name in batch {
+                    group.addTask {
+                        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+                              let url = URL(string: "https://site.web.api.espn.com/apis/search/v2?limit=25&query=\(encoded)"),
+                              let json = await web.optionalJSON(url, timeout: 8) else { return (name, nil) }
+                        return (name, Awards.match(name, among: Search.parse(json).players))
+                    }
+                }
+                // A search that failed is asked again next time; one that found nobody is not.
+                for await (name, id) in group { if let id { known[name] = id } }
+            }
+        }
+        cache.save(known, "awards/ids")
+        return known
+    }
+
     // MARK: Search
 
     /// NBA teams and players, past ones included. Empty under two characters.

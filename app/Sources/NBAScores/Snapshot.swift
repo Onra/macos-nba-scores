@@ -25,6 +25,19 @@ enum Snapshot {
                     await shoot(model, "player", to: directory)
                     model.back()
                 }
+                // An MVP's card, then the voting of his first MVP and of his first All-NBA team.
+                model.openPlayer("4278073")
+                await model.fetchPlayer()
+                await shoot(model, "player-mvp", to: directory)
+                for (kind, name) in [(AwardKind.mvp, "award"), (.allNBA, "award-teams")] {
+                    model.openAward(kind, season: 2025, me: "4278073")
+                    await model.fetchAward()
+                    await shoot(model, name, to: directory)
+                    model.back()
+                }
+                model.back()
+                do {
+                }
                 model.openTeam(game.home.team.id)
                 await model.fetchTeam()
                 await shoot(model, "team", to: directory)

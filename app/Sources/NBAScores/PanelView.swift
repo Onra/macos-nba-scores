@@ -50,6 +50,7 @@ struct PanelView: View {
         case .search: SearchView(model: model)
         case .series(let series): SeriesView(model: model, series: series)
         case .bracket(let key): StandingsView(model: model, key: key)
+        case .award(let key): AwardView(model: model, key: key)
         case nil:
             switch model.tab {
             case .scores: ScoresView(model: model)
@@ -62,7 +63,7 @@ struct PanelView: View {
     private var hasContent: Bool {
         switch model.stack.last {
         case .box(let id): model.boxes[id] != nil
-        case .player, .team, .search, .series, .bracket: false
+        case .player, .team, .search, .series, .bracket, .award: false
         case nil: model.tab == .scores ? model.viewLoaded : false
         }
     }
@@ -82,6 +83,7 @@ struct PanelView: View {
             switch top {
             case .box: model.stepBox(delta)
             case .team: model.stepTeamSeason(delta)
+            case .award: model.stepAwardSeason(delta)
             case .player, .search, .series, .bracket: return false
             case nil: model.tab == .scores ? model.stepDay(delta) : model.stepSeason(delta)
             }
@@ -130,6 +132,14 @@ struct Header: View {
             case .search: search
             case .series(let series): self.series(series)
             case .bracket(let key): detail { TitleBlock(title: Season.label(key.season), subtitle: tableSubtitle(key)) }
+            case .award(let key):
+                detail {
+                    StepTitle(
+                        title: key.kind.title, subtitle: Season.label(key.season),
+                        canPrev: key.season > key.kind.firstSeason, canNext: key.season < Awards.lastSeason(),
+                        prev: { model.stepAwardSeason(-1) }, next: { model.stepAwardSeason(1) }
+                    )
+                }
             case nil: top
             }
         }

@@ -26,6 +26,7 @@ struct NBAScoresApp: App {
         model.start()
         StatusMenu.shared.install(model: model)
         LoginItem.registerOnFirstLaunch()
+        Hotkey.register()
     }
 
     var body: some Scene {

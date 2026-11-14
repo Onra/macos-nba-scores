@@ -216,9 +216,13 @@ enum StatusItem {
         NSApp.windows.first { $0.className.contains("NSStatusBarWindow") }
     }
 
-    /// Closes the panel the way a click on the menu bar icon does.
-    static func closePanel() {
+    /// Opens or closes the panel the way a click on the menu bar icon does.
+    static func togglePanel() {
         button(in: window?.contentView)?.performClick(nil)
+    }
+
+    static func closePanel() {
+        togglePanel()
     }
 
     private static func button(in view: NSView?) -> NSButton? {

@@ -30,6 +30,13 @@ struct TableKey: Hashable {
     let season: Int
 }
 
+/// The voting of an award in a season, and the player whose card opened it (ESPN athlete id).
+struct AwardKey: Hashable {
+    let kind: AwardKind
+    let season: Int
+    var me = ""
+}
+
 /// A view opened on top of the scores or the standings; Esc steps back.
 enum Route: Hashable {
     case box(String)
@@ -40,6 +47,7 @@ enum Route: Hashable {
     case series(SeriesCard)
     /// The Cup or the playoffs of a season, opened from a title on a player card.
     case bracket(TableKey)
+    case award(AwardKey)
 
     var title: String {
         switch self {
@@ -49,6 +57,7 @@ enum Route: Hashable {
         case .search: "Search"
         case .series: "Series"
         case .bracket(let key): key.table.rawValue
+        case .award: "Voting"
         }
     }
 }
@@ -81,6 +90,8 @@ final class AppModel {
     private(set) var players: [String: PlayerCard] = [:]
     private(set) var teamPages: [Route: TeamPage] = [:]
     private(set) var failed: Set<Route> = []
+    private(set) var awards: [AwardKey: AwardPage] = [:]
+    private(set) var failedAwards: Set<AwardKey> = []
 
     // Search
     var query = "" { didSet { if query != oldValue { runSearch() } } }
@@ -228,6 +239,7 @@ final class AppModel {
         else if !viewingCurrent { await fetchView() }
         if openBoxID != nil { await fetchBox(force: force) }
         if case .team = stack.last { await fetchTeam() }
+        if case .award = stack.last { await fetchAward() }
     }
 
     func fetchPlayer() async {
@@ -375,6 +387,32 @@ final class AppModel {
         guard !id.isEmpty else { return }
         stack.append(.box(id))
         Task { await fetchBox() }
+    }
+
+    // MARK: Award voting
+
+    /// The voting of an award, from a player card: his line is marked.
+    func openAward(_ kind: AwardKind, season: Int, me: String) {
+        stack.append(.award(AwardKey(kind: kind, season: season, me: me)))
+        Task { await fetchAward() }
+    }
+
+    func stepAwardSeason(_ delta: Int) {
+        guard case .award(let key) = stack.last else { return }
+        let season = key.season + delta
+        guard season >= key.kind.firstSeason, season <= Awards.lastSeason() else { return }
+        stack[stack.count - 1] = .award(AwardKey(kind: key.kind, season: season, me: key.me))
+        Task { await fetchAward() }
+    }
+
+    func fetchAward() async {
+        guard case .award(let key) = stack.last, awards[key] == nil else { return }
+        if let page = await library.award(key.kind, season: key.season) {
+            awards[key] = page
+            failedAwards.remove(key)
+        } else {
+            failedAwards.insert(key)
+        }
     }
 
     // MARK: Search
