@@ -140,8 +140,11 @@ public struct Game: Identifiable, Hashable, Sendable {
     /// NBA.com's recap video of a finished game. Its address names the winner first,
     /// nicknames in lower case with dashes: game-recap-grizzlies-124-trail-blazers-103.
     public var recapURL: URL? {
-        guard state == .post, let a = away.score, let h = home.score,
-              !away.team.nick.isEmpty, !home.team.nick.isEmpty else { return nil }
+        state == .post ? Game.recapURL(away: away, home: home) : nil
+    }
+
+    static func recapURL(away: Side, home: Side) -> URL? {
+        guard let a = away.score, let h = home.score, !away.team.nick.isEmpty, !home.team.nick.isEmpty else { return nil }
         let (winner, loser) = h > a ? (home, away) : (away, home)
         func slug(_ side: Side) -> String {
             side.team.nick.lowercased()

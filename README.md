@@ -4,9 +4,9 @@
 
 NBA Scores is a menu bar app for macOS: the games of the day, box scores, player cards, team pages, standings, the NBA Cup and the playoffs, one click away from the menu bar. It is a native port of [omarchy-nba-scores](https://github.com/Onra/omarchy-nba-scores), the same widget for the Omarchy shell.
 
-**Work in progress.** What works today: the scores of every game day with live refresh, box scores, recap links and the regular-season standings. Player cards, team pages, search, the NBA Cup, the playoffs and award voting are still to come.
+**Work in progress.** What works today: the scores of every game day with live refresh, box scores, recap links, the regular-season standings, player cards, team pages and the search. The NBA Cup, the playoffs and award voting are still to come.
 
-The data comes from ESPN's public API, which needs no key.
+The data comes from ESPN's public API, which needs no key. The salaries of the seasons to come and the list of NBA champions come from Basketball-Reference.
 
 ## Install
 
@@ -25,15 +25,18 @@ Click the basketball to open the panel, and right-click it for Refresh, Launch a
 
 | Key | Action |
 | --- | --- |
-| `←` `→` | Previous or next game day; in a box score, previous or next game; in the standings, previous or next season |
-| `↑` `↓` | Move through the games |
-| `Enter` | Open the box score of the selected game |
+| `←` `→` | Previous or next game day; in a box score, previous or next game; in the standings and on a team page, previous or next season |
+| `↑` `↓` | Move through the games, or the search results |
+| `Enter` | Open the box score of the selected game, or the selected search result |
 | `Esc` | Back, or close the panel |
 | `y` | Open the recap of the selected game or of the open box score |
+| `/` or `⌘F` | Search teams and players, past and present |
 | `r` | Refresh |
 | `t` | Back to today |
 | `b` | Scores |
 | `s` | Standings |
+
+Team logos and names open the team's page everywhere, and a player's name in a box score or a roster opens his card: bio, averages against his career, salary season by season with the seasons to come, titles and awards, and his career by season. The search also knows the old names of today's franchises: `Sonics` finds the Thunder.
 
 A day is a US Eastern date, as for the NBA: a game that tips off at 01:30 in Paris belongs to the day before. Live games refresh every 30 seconds, and everything else every 5 minutes.
 

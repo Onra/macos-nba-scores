@@ -106,6 +106,12 @@ public struct BoxScore: Identifiable, Sendable {
         }
     }
 
+    /// NBA.com's recap video, once the game is over.
+    public var recapURL: URL? {
+        guard state == .post, teams.count == 2 else { return nil }
+        return Game.recapURL(away: teams[0].side, home: teams[1].side)
+    }
+
     /// "COACH'S DECISION" -> "Coach's decision"
     static func sentence(_ text: String) -> String {
         guard let first = text.first else { return "" }

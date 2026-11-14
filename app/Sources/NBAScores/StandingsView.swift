@@ -26,7 +26,7 @@ struct StandingsView: View {
         VStack(spacing: 1) {
             SectionHeader(title: conference.name, columns: StandingsView.columns, widths: StandingsView.widths)
             ForEach(conference.teams) { standing in
-                Row(height: 27) {
+                Row(height: 27, action: { model.openTeam(standing.team.id, season: model.standingsSeason) }) {
                     HStack(spacing: 6) {
                         Text(standing.seed > 0 ? "\(standing.seed)" : "")
                             .font(.system(size: 11))

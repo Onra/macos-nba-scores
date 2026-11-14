@@ -18,8 +18,27 @@ enum Snapshot {
                 model.openBox(game)
                 await model.fetchBox()
                 await shoot(model, "box", to: directory)
+                if let player = model.boxes[game.id]?.teams.first?.starters.first {
+                    model.openPlayer(player.athlete)
+                    await model.fetchPlayer()
+                    await shoot(model, "player", to: directory)
+                    model.back()
+                }
+                model.openTeam(game.home.team.id)
+                await model.fetchTeam()
+                await shoot(model, "team", to: directory)
+                model.stepTeamSeason(-1)
+                await model.fetchTeam()
+                await shoot(model, "team-past", to: directory)
+                model.back()
                 model.back()
             }
+
+            model.openSearch()
+            model.query = "sonics"
+            try? await Task.sleep(for: .seconds(3))
+            await shoot(model, "search", to: directory)
+            model.back()
 
             model.stepDay(1)
             await model.fetchView()

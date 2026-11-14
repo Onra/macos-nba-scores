@@ -10,6 +10,19 @@ enum Tab: String, CaseIterable {
 /// A view opened on top of the scores or the standings; Esc steps back.
 enum Route: Hashable {
     case box(String)
+    case player(String)
+    /// A team's season, by the year it ends; 0 for the current one.
+    case team(String, Int)
+    case search
+
+    var title: String {
+        switch self {
+        case .box: "Box score"
+        case .player: "Player"
+        case .team: "Team"
+        case .search: "Search"
+        }
+    }
 }
 
 /// Everything the panel shows: the games by day, the box scores, the standings, and where the user is.
@@ -31,6 +44,18 @@ final class AppModel {
     private(set) var standings: [Int: Standings] = [:]
     private(set) var standingsSeason = 0
 
+    // Player cards by athlete id, team pages by route, and the routes that could not be loaded
+    private(set) var players: [String: PlayerCard] = [:]
+    private(set) var teamPages: [Route: TeamPage] = [:]
+    private(set) var failed: Set<Route> = []
+
+    // Search
+    var query = "" { didSet { if query != oldValue { runSearch() } } }
+    private(set) var results: [SearchResult] = []
+    private(set) var searching = false
+    private(set) var searchSelected = 0
+    private var searchTask: Task<Void, Never>?
+
     // Navigation
     private(set) var tab = Tab.scores
     private(set) var stack: [Route] = []
@@ -43,6 +68,7 @@ final class AppModel {
     private(set) var panelOpen = false
 
     private let espn = ESPN()
+    private let library = Library()
     private var poller: Task<Void, Never>?
 
     // MARK: Derived
@@ -61,6 +87,8 @@ final class AppModel {
     }
 
     func game(_ id: String) -> Game? { viewGames.first { $0.id == id } }
+
+    var searchOpen: Bool { stack.last == .search }
 
     /// Changes whenever another screen is shown.
     var screen: AnyHashable {
@@ -132,6 +160,27 @@ final class AppModel {
         if tab == .standings { await fetchStandings(force: force) }
         else if !viewingCurrent { await fetchView() }
         if openBoxID != nil { await fetchBox(force: force) }
+        if case .team = stack.last { await fetchTeam() }
+    }
+
+    func fetchPlayer() async {
+        guard case .player(let id) = stack.last, let route = stack.last else { return }
+        if let card = await library.player(id) {
+            players[id] = card
+            failed.remove(route)
+        } else if players[id] == nil {
+            failed.insert(route)
+        }
+    }
+
+    func fetchTeam() async {
+        guard case .team(let id, let season) = stack.last, let route = stack.last else { return }
+        if let page = await library.team(id, season: season) {
+            teamPages[route] = page
+            failed.remove(route)
+        } else if teamPages[route] == nil {
+            failed.insert(route)
+        }
     }
 
     /// A refresh the user asked for: shown for at least 0.8 s so that a fast one is still seen.
@@ -198,6 +247,87 @@ final class AppModel {
         if !stack.isEmpty { stack.removeLast() }
     }
 
+    func openPlayer(_ id: String) {
+        guard !id.isEmpty, stack.last != .player(id) else { return }
+        stack.append(.player(id))
+        Task { await fetchPlayer() }
+    }
+
+    /// `season`: the year it ends; 0 for the current one.
+    func openTeam(_ id: String, season: Int = 0) {
+        // The season being played is the current one, however it is asked for.
+        let route = Route.team(id, season >= seasonYear ? 0 : season)
+        guard !id.isEmpty, stack.last != route else { return }
+        stack.append(route)
+        Task { await fetchTeam() }
+    }
+
+    /// The season of the open team page, by the year it ends.
+    var teamSeason: Int {
+        guard case .team(_, let season) = stack.last else { return 0 }
+        return season > 0 ? season : (stack.last.flatMap { teamPages[$0] }?.season ?? seasonYear)
+    }
+
+    func stepTeamSeason(_ delta: Int) {
+        guard case .team(let id, _) = stack.last, teamSeason > 0 else { return }
+        let season = teamSeason + delta
+        guard season >= TeamPage.firstSeason, season <= max(seasonYear, teamSeason) else { return }
+        stack[stack.count - 1] = .team(id, season >= seasonYear ? 0 : season)
+        Task { await fetchTeam() }
+    }
+
+    func openBox(id: String) {
+        guard !id.isEmpty else { return }
+        stack.append(.box(id))
+        Task { await fetchBox() }
+    }
+
+    // MARK: Search
+
+    func openSearch() {
+        query = ""
+        results = []
+        searchSelected = 0
+        if !searchOpen { stack.append(.search) }
+    }
+
+    /// Searches 0.3 s after the last key, so that typing does not fire a request per letter.
+    private func runSearch() {
+        searchTask?.cancel()
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard text.count >= 2 else {
+            results = []
+            searching = false
+            return
+        }
+        searching = true
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            let found = await library.search(text)
+            guard !Task.isCancelled else { return }
+            results = found
+            searchSelected = 0
+            searching = false
+        }
+    }
+
+    func moveSearch(_ delta: Int) {
+        guard !results.isEmpty else { return }
+        searchSelected = min(max(searchSelected + delta, 0), results.count - 1)
+    }
+
+    func openSelectedResult() {
+        if results.indices.contains(searchSelected) { open(results[searchSelected]) }
+    }
+
+    func open(_ result: SearchResult) {
+        switch result.kind {
+        case .team: openTeam(result.target)
+        case .player: openPlayer(result.target)
+        }
+    }
+
     func stepDay(_ delta: Int) {
         guard !days.isEmpty else { return }
         let index = dayIndex ?? 0
@@ -260,14 +390,14 @@ final class AppModel {
     }
 
     /// The recap of the open box score, else of the game under the keyboard cursor.
-    var recapTarget: Game? {
-        if let id = openBoxID { return game(id) }
-        if let selected, viewGames.indices.contains(selected) { return viewGames[selected] }
+    var recapTarget: URL? {
+        if let id = openBoxID { return boxes[id]?.recapURL ?? game(id)?.recapURL }
+        if let selected, viewGames.indices.contains(selected) { return viewGames[selected].recapURL }
         return nil
     }
 
-    func openRecap(_ game: Game) {
-        guard let url = game.recapURL else { return }
+    func openRecap(_ url: URL?) {
+        guard let url else { return }
         NSWorkspace.shared.open(url)
         StatusItem.closePanel()
     }

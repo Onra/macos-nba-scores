@@ -34,12 +34,17 @@ struct PanelView: View {
         .focusEffectDisabled()
         .focused($focused)
         .onAppear { focused = true }
+        // The search field takes the keyboard while it is open; give it back afterwards.
+        .onChange(of: model.searchOpen) { _, open in if !open { focused = true } }
         .onKeyPress(phases: .down) { press in handle(press) ? .handled : .ignored }
     }
 
     @ViewBuilder private var content: some View {
         switch model.stack.last {
         case .box(let id): BoxScoreView(model: model, id: id)
+        case .player(let id): PlayerView(model: model, id: id)
+        case .team: TeamView(model: model)
+        case .search: SearchView(model: model)
         case nil:
             switch model.tab {
             case .scores: ScoresView(model: model)
@@ -52,36 +57,50 @@ struct PanelView: View {
     private var hasContent: Bool {
         switch model.stack.last {
         case .box(let id): model.boxes[id] != nil
+        case .player, .team, .search: false
         case nil: model.tab == .scores ? model.viewLoaded : model.standings[model.standingsSeason] != nil
         }
     }
 
     private func handle(_ press: KeyPress) -> Bool {
+        if press.modifiers.contains(.command), press.characters == "f" {
+            model.openSearch()
+            return true
+        }
         guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return false }
-        let inBox = model.openBoxID != nil
+        let top = model.stack.last
         switch press.key {
         case .escape:
             if model.stack.isEmpty { StatusItem.closePanel() } else { model.back() }
         case .leftArrow, .rightArrow:
             let delta = press.key == .leftArrow ? -1 : 1
-            if inBox { model.stepBox(delta) }
-            else if model.tab == .scores { model.stepDay(delta) }
-            else { model.stepSeason(delta) }
+            switch top {
+            case .box: model.stepBox(delta)
+            case .team: model.stepTeamSeason(delta)
+            case .player, .search: return false
+            case nil: model.tab == .scores ? model.stepDay(delta) : model.stepSeason(delta)
+            }
         case .upArrow, .downArrow:
-            guard !inBox, model.tab == .scores else { return false }
-            model.moveSelection(press.key == .upArrow ? -1 : 1)
+            let delta = press.key == .upArrow ? -1 : 1
+            if top == .search { model.moveSearch(delta) }
+            else if top == nil, model.tab == .scores { model.moveSelection(delta) }
+            else { return false }
         case .return:
-            guard !inBox, model.tab == .scores else { return false }
-            model.openSelected()
+            if top == .search { model.openSelectedResult() }
+            else if top == nil, model.tab == .scores { model.openSelected() }
+            else { return false }
         default:
+            // Letters belong to the search field while it is open.
+            guard top != .search else { return false }
             switch press.characters {
+            case "/": model.openSearch()
             case "r": model.refreshNow()
             case "t": model.show(.scores); model.goCurrent()
             case "b": model.show(.scores)
             case "s": model.show(model.tab == .standings && model.stack.isEmpty ? .scores : .standings)
             case "y":
-                guard let game = model.recapTarget else { return false }
-                model.openRecap(game)
+                guard let url = model.recapTarget else { return false }
+                model.openRecap(url)
             default: return false
             }
         }
@@ -98,6 +117,9 @@ struct Header: View {
         Group {
             switch model.stack.last {
             case .box(let id): box(id)
+            case .player(let id): player(id)
+            case .team: team
+            case .search: search
             case nil: top
             }
         }
@@ -132,7 +154,10 @@ struct Header: View {
                 )
             }
             Spacer(minLength: 0)
-            RefreshButton(model: model)
+            HStack(spacing: 2) {
+                IconButton(symbol: "magnifyingglass") { model.openSearch() }.help("Search teams and players (/)")
+                RefreshButton(model: model)
+            }
         }
     }
 
@@ -144,6 +169,28 @@ struct Header: View {
         return games.isEmpty ? (model.viewingCurrent ? "Today" : " ") : games.subtitle
     }
 
+    /// The name of the screen under this one, on the back button.
+    private var backTitle: String {
+        model.stack.dropLast().last?.title ?? model.tab.rawValue
+    }
+
+    /// Back on the left, a title in the middle, actions on the right.
+    private func detail(@ViewBuilder title: () -> some View, @ViewBuilder actions: () -> some View = { EmptyView() }) -> some View {
+        ZStack {
+            HStack(spacing: 6) {
+                Button { model.back() } label: {
+                    Label(backTitle, systemImage: "chevron.left").font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer()
+                actions()
+                RefreshButton(model: model)
+            }
+            title()
+        }
+    }
+
     private func box(_ id: String) -> some View {
         let game = model.game(id)
         let box = model.boxes[id]
@@ -152,30 +199,65 @@ struct Header: View {
         let state = box?.state ?? game?.state ?? .pre
         let detail = box?.detail ?? game?.detail ?? ""
         let venue = box?.venue ?? game?.venue ?? ""
-        return ZStack {
-            HStack {
-                Button { model.back() } label: {
-                    Label(model.tab.rawValue, systemImage: "chevron.left").font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                Spacer()
-                if let game, game.recapURL != nil { RecapButton { model.openRecap(game) } }
-                RefreshButton(model: model)
-            }
-            VStack(spacing: 1) {
-                Text(title(away, home)).font(.system(size: 14, weight: .semibold)).monospacedDigit()
-                Text([detail, venue].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(state == .live ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-            }
+        let recap = box?.recapURL ?? game?.recapURL
+        return self.detail {
+            TitleBlock(title: boxTitle(away, home),
+                       subtitle: [detail, venue].filter { !$0.isEmpty }.joined(separator: " · "),
+                       live: state == .live)
+        } actions: {
+            if let recap { RecapButton { model.openRecap(recap) } }
         }
     }
 
-    private func title(_ away: Side?, _ home: Side?) -> String {
+    private func boxTitle(_ away: Side?, _ home: Side?) -> String {
         guard let away, let home else { return "Box score" }
         guard let a = away.score, let h = home.score else { return "\(away.team.abbr) at \(home.team.abbr)" }
         return "\(away.team.abbr)  \(a) – \(h)  \(home.team.abbr)"
+    }
+
+    private func player(_ id: String) -> some View {
+        let card = model.players[id]
+        return detail { TitleBlock(title: card?.name ?? "Player", subtitle: card?.subtitle ?? " ") }
+    }
+
+    private var team: some View {
+        let page = model.stack.last.flatMap { model.teamPages[$0] }
+        let season = model.teamSeason
+        return detail {
+            StepTitle(
+                title: page?.name ?? "Team",
+                subtitle: season > 0 ? Season.label(season) : " ",
+                canPrev: season > TeamPage.firstSeason, canNext: season > 0 && season < model.seasonYear,
+                prev: { model.stepTeamSeason(-1) }, next: { model.stepTeamSeason(1) }
+            )
+        }
+    }
+
+    private var search: some View {
+        HStack(spacing: 8) {
+            Button { model.back() } label: {
+                Label(backTitle, systemImage: "chevron.left").font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            SearchField(model: model)
+        }
+    }
+}
+
+struct TitleBlock: View {
+    let title: String
+    let subtitle: String
+    var live = false
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(title).font(.system(size: 14, weight: .semibold)).monospacedDigit().lineLimit(1)
+            Text(subtitle)
+                .font(.system(size: 10.5))
+                .foregroundStyle(live ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+        }
     }
 }
 
@@ -195,7 +277,7 @@ struct RefreshButton: View {
     }
 }
 
-/// A title between two chevrons: the day in the scores, the season in the standings.
+/// A title between two chevrons: the day in the scores, the season in the standings and on a team page.
 struct StepTitle: View {
     let title: String
     let subtitle: String
@@ -208,8 +290,8 @@ struct StepTitle: View {
         HStack(spacing: 2) {
             IconButton(symbol: "chevron.left", enabled: canPrev, action: prev)
             VStack(spacing: 1) {
-                Text(title).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                Text(subtitle).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+                Text(title).font(.system(size: 13, weight: .semibold)).monospacedDigit().lineLimit(1)
+                Text(subtitle).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(minWidth: 150)
             IconButton(symbol: "chevron.right", enabled: canNext, action: next)

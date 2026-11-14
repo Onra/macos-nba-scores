@@ -2,8 +2,6 @@ import Foundation
 
 /// ESPN's public API: no key, no account.
 public struct ESPN: Sendable {
-    public enum Failure: Error { case status(Int) }
-
     static let site = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 
     /// With no day ESPN answers for "today", which is also how the current day and the season calendar are found.
@@ -21,21 +19,14 @@ public struct ESPN: Sendable {
         return URL(string: season.map { "\(base)&season=\($0)" } ?? base)!
     }
 
-    private let session: URLSession
+    private let web: Web
 
-    public init() {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 10
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: config)
+    public init(web: Web = Web()) {
+        self.web = web
     }
 
     public func json(_ url: URL) async throws -> JSON {
-        let (data, response) = try await session.data(from: url)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw Failure.status(http.statusCode)
-        }
-        return try JSON(data: data)
+        try await web.json(url, timeout: 10)
     }
 
     public func scoreboard(day: String? = nil) async throws -> Scoreboard {

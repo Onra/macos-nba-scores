@@ -16,7 +16,8 @@ struct ScoresView: View {
                     GameRow(
                         game: game, selected: model.selected == index,
                         open: game.hasBoxScore ? { model.openBox(game) } : nil,
-                        recap: { model.openRecap(game) }
+                        recap: { model.openRecap(game.recapURL) },
+                        model: model
                     )
                     if index < games.count - 1 {
                         Divider().padding(.horizontal, Layout.rowInset)
@@ -33,14 +34,15 @@ struct GameRow: View {
     let selected: Bool
     let open: (() -> Void)?
     let recap: () -> Void
+    let model: AppModel
 
     var body: some View {
         Row(selected: selected, action: open) {
             HStack(spacing: 10) {
                 status.frame(width: 84, alignment: .leading)
                 VStack(spacing: 5) {
-                    TeamLine(game: game, side: game.away)
-                    TeamLine(game: game, side: game.home)
+                    TeamLine(model: model, game: game, side: game.away)
+                    TeamLine(model: model, game: game, side: game.home)
                 }
                 // Always reserved, so that the scores of every game line up.
                 ZStack(alignment: .trailing) { Color.clear.frame(height: 1); trailing }.frame(width: 76)
@@ -97,16 +99,15 @@ struct GameRow: View {
 }
 
 struct TeamLine: View {
+    let model: AppModel
     let game: Game
     let side: Side
 
     var body: some View {
         let dimmed = game.lost(side)
         HStack(spacing: 8) {
-            Logo(team: side.team).opacity(dimmed ? 0.7 : 1)
-            Text(side.team.name)
-                .font(.system(size: 13, weight: game.state == .post && !dimmed ? .semibold : .regular))
-                .lineLimit(1)
+            TeamLink(model: model, team: side.team,
+                     font: .system(size: 13, weight: game.state == .post && !dimmed ? .semibold : .regular), dimmed: dimmed)
             Text(side.record).font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
             Spacer(minLength: 0)
             if game.state != .pre, let score = side.score {

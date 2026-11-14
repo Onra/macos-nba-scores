@@ -12,7 +12,7 @@ struct BoxScoreView: View {
             VStack(spacing: 18) {
                 LineScore(box: box).padding(.top, 6)
                 ForEach(box.teams, id: \.side.team.id) { team in
-                    TeamBoxView(team: team)
+                    TeamBoxView(model: model, team: team)
                 }
             }
             .padding(.bottom, 6)
@@ -55,13 +55,13 @@ struct LineScore: View {
 }
 
 struct TeamBoxView: View {
+    let model: AppModel
     let team: TeamBox
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Logo(team: team.side.team, size: 24)
-                Text(team.side.team.fullName).font(.system(size: 14, weight: .semibold))
+                TeamLink(model: model, team: fullNamed, logoSize: 24, font: .system(size: 14, weight: .semibold))
                 Text(team.side.score.map(String.init) ?? "").font(.system(size: 14)).monospacedDigit().foregroundStyle(.secondary)
                 Spacer()
             }
@@ -74,7 +74,7 @@ struct TeamBoxView: View {
                     group("Bench", team.bench).padding(.top, 8)
                 }
                 ForEach(team.dnp) { player in
-                    Row(height: 24) {
+                    Row(height: 24, action: { model.openPlayer(player.athlete) }) {
                         HStack(spacing: 6) {
                             Text(player.name).font(.system(size: 12))
                             Text(player.reason.isEmpty ? "DNP" : "DNP · \(player.reason)").font(.system(size: 11))
@@ -109,6 +109,13 @@ struct TeamBoxView: View {
         }
     }
 
+    /// The banner names the team in full.
+    private var fullNamed: Team {
+        var team = team.side.team
+        if !team.fullName.isEmpty { team.name = team.fullName }
+        return team
+    }
+
     private func cells(_ stats: [String: String]) -> [String] {
         BoxScore.columns.map { stats[$0] ?? "" }
     }
@@ -117,7 +124,7 @@ struct TeamBoxView: View {
         VStack(spacing: 2) {
             SectionHeader(title: title, columns: BoxScore.columns, widths: BoxScoreView.widths)
             ForEach(players) { player in
-                Row(height: 24) {
+                Row(height: 24, action: { model.openPlayer(player.athlete) }) {
                     HStack(spacing: 0) {
                         Text(player.name).font(.system(size: 12.5)).lineLimit(1)
                         Text(player.pos).font(.system(size: 10)).foregroundStyle(.tertiary).padding(.leading, 5)

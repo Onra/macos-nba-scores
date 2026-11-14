@@ -62,6 +62,12 @@ public enum Season {
         }
     }
 
+    /// "2025-26" -> 2026, and "1993" -> 1993: ESPN names the seasons before 1993-94 by the year they end.
+    public static func endYear(_ label: String) -> Int {
+        guard let start = Int(label.prefix(4)) else { return 0 }
+        return label.count > 4 ? start + 1 : start
+    }
+
     /// 2026 -> "2025-26". Seasons are numbered by the year they end, as ESPN does.
     public static func label(_ endYear: Int) -> String {
         endYear > 0 ? "\(endYear - 1)-\(String(format: "%02d", endYear % 100))" : ""
