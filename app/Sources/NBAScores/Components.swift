@@ -17,40 +17,99 @@ enum Layout {
 
 // MARK: Remote images
 
+/// Logos and headshots, kept in memory at the sizes they are drawn at. ESPN's files are 500 pixels wide:
+/// scaled down on the fly to a 22-point logo they come out jagged, so each is resampled once, properly,
+/// to the pixels it fills.
 @MainActor
 final class ImageCache {
     static let shared = ImageCache()
-    private var images: [URL: NSImage] = [:]
+
+    private struct Key: Hashable {
+        let url: URL
+        let pixels: Int
+    }
+
+    private var files: [URL: Data] = [:]
+    private var missing: Set<URL> = []
+    private var images: [Key: NSImage] = [:]
+    /// The last size drawn of each file, to show at once while the right size is made.
+    private var latest: [URL: NSImage] = [:]
     private let session = URLSession(configuration: .default)
 
-    func cached(_ url: URL?) -> NSImage? { url.flatMap { images[$0] } }
+    /// ESPN has a version of every team logo for dark backgrounds: the navy ones do not vanish on it.
+    static func themed(_ url: URL?, dark: Bool) -> URL? {
+        guard dark, let url, url.path.contains("/i/teamlogos/"), url.path.contains("/500/") else { return url }
+        return URL(string: url.absoluteString.replacingOccurrences(of: "/500/", with: "/500-dark/")) ?? url
+    }
 
-    func load(_ url: URL?) async -> NSImage? {
+    func cached(_ url: URL?) -> NSImage? { url.flatMap { latest[$0] } }
+
+    /// The image at `url`, resampled so that its longer side is `pixels`; `fallback` when it can't be had.
+    func load(_ url: URL?, pixels: Int, fallback: URL? = nil) async -> NSImage? {
         guard let url else { return nil }
-        if let image = images[url] { return image }
-        guard let (data, _) = try? await session.data(from: url), let image = NSImage(data: data) else { return nil }
-        images[url] = image
+        if let image = images[Key(url: url, pixels: pixels)] { return image }
+        if files[url] == nil, !missing.contains(url) {
+            if let (data, response) = try? await session.data(from: url),
+               (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true {
+                files[url] = data
+            } else if fallback != nil {
+                missing.insert(url)
+            }
+        }
+        guard let data = files[url], let image = ImageCache.resample(data, pixels: pixels) else {
+            return fallback == url ? nil : await load(fallback, pixels: pixels)
+        }
+        images[Key(url: url, pixels: pixels)] = image
+        latest[url] = image
         return image
+    }
+
+    private static func resample(_ data: Data, pixels: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(pixels, 16),
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return NSImage(data: data) }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 }
 
-/// A logo or a headshot; shows nothing until it is loaded, then keeps it in memory.
+/// A logo or a headshot; shows nothing until it is loaded, then keeps it in memory. It is made at the
+/// size it is given, and team logos follow light and dark mode.
 struct RemoteImage: View {
     let url: URL?
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var scale
     @State private var image: NSImage?
+    @State private var side: CGFloat = 0
 
     init(_ url: URL?) {
         self.url = url
         _image = State(initialValue: ImageCache.shared.cached(url))
     }
 
+    private struct Request: Equatable {
+        let url: URL?
+        let pixels: Int
+    }
+
     var body: some View {
+        let themed = ImageCache.themed(url, dark: scheme == .dark)
         ZStack {
+            Color.clear
             if let image {
                 Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
             }
         }
-        .task(id: url) { image = await ImageCache.shared.load(url) }
+        .onGeometryChange(for: CGFloat.self) { max($0.size.width, $0.size.height) } action: { side = $0 }
+        .task(id: Request(url: themed, pixels: Int((side * scale).rounded(.up)))) {
+            guard side > 0 else { return }
+            if let loaded = await ImageCache.shared.load(themed, pixels: Int((side * scale).rounded(.up)), fallback: url) {
+                image = loaded
+            }
+        }
     }
 }
 
